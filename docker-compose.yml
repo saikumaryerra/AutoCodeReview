@@ -1,0 +1,52 @@
+# ============================================================================
+# AutoCodeReview — Production Docker Compose
+# ============================================================================
+# Runs the compiled application behind a single container.
+# Data (SQLite DB + cloned repos) persists in a named volume.
+# Claude CLI auth is mounted read-only from the host user's home directory.
+# ============================================================================
+
+services:
+  pr-review:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto-code-review
+    restart: unless-stopped
+
+    ports:
+      - "${API_PORT:-3001}:3001"
+
+    env_file:
+      - .env
+
+    volumes:
+      # Persistent data: database, cloned repos, logs
+      - pr-review-data:/app/data
+      # Claude CLI authentication — mounted read-only so the container can
+      # call claude without re-authenticating. The host must have already
+      # run `claude` at least once to create this directory.
+      - ~/.claude:/home/prreview/.claude:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+          cpus: "2"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  pr-review-data:
+    name: auto-code-review-data

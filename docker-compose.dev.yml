@@ -1,0 +1,49 @@
+# ============================================================================
+# AutoCodeReview — Development Docker Compose
+# ============================================================================
+# Mounts source code into the container for hot-reload via tsx watch (backend)
+# and vite dev server (frontend). Node modules are kept in anonymous volumes
+# so host and container dependency trees don't conflict.
+# ============================================================================
+
+services:
+  pr-review-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: auto-code-review-dev
+    restart: unless-stopped
+
+    ports:
+      # Express API
+      - "${API_PORT:-3001}:3001"
+      # Vite dev server
+      - "${FRONTEND_PORT:-5173}:5173"
+
+    env_file:
+      - .env
+
+    volumes:
+      # Mount source code for hot-reload
+      - .:/app
+
+      # Prevent host node_modules from overriding container installs.
+      # These anonymous volumes preserve the npm ci output from the image build.
+      - /app/node_modules
+      - /app/frontend/node_modules
+
+      # Persistent dev data (DB + cloned repos)
+      - pr-review-dev-data:/app/data
+
+      # Claude CLI auth from host
+      - ~/.claude:/home/prreview/.claude:ro
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pr-review-dev-data:
+    name: auto-code-review-dev-data

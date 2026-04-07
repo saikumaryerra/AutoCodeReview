@@ -1,0 +1,53 @@
+# ============================================================================
+# AutoCodeReview — Development Dockerfile
+# ============================================================================
+# Single-stage image for local development with hot-reload.
+# Source code is volume-mounted at runtime so rebuilds are instant.
+# Runs backend (tsx watch) and frontend (vite dev) concurrently.
+# ============================================================================
+
+FROM node:20-slim
+
+# System deps needed at dev time
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git curl unzip ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Claude CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Non-root user for security parity with production
+RUN groupadd -r prreview && \
+    useradd -r -g prreview -m -s /bin/bash prreview && \
+    mkdir -p /app/data/repos /app/data/logs && \
+    chown -R prreview:prreview /app
+
+WORKDIR /app
+
+# Install backend dependencies
+COPY --chown=prreview:prreview package.json package-lock.json tsconfig.json ./
+RUN npm ci
+
+# Install frontend dependencies
+COPY --chown=prreview:prreview frontend/package.json frontend/package-lock.json ./frontend/
+RUN cd frontend && npm ci
+
+# Copy all source (will be overridden by volume mount in docker-compose)
+COPY --chown=prreview:prreview . .
+
+ENV NODE_ENV=development
+ENV DB_PATH=/app/data/reviews.db
+ENV REPOS_DIR=/app/data/repos
+ENV API_PORT=3001
+ENV FRONTEND_PORT=5173
+
+EXPOSE 3001 5173
+
+USER prreview
+
+# concurrently runs backend tsx watch + frontend vite dev server
+CMD ["npx", "concurrently", \
+     "--names", "api,web", \
+     "--prefix-colors", "blue,green", \
+     "npx tsx watch src/index.ts", \
+     "cd frontend && npx vite --host 0.0.0.0"]
