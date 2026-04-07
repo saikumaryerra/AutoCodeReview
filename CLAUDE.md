@@ -68,12 +68,41 @@ docker compose -f docker-compose.dev.yml up
 
 ## Coding Conventions
 
+- Do not add `Co-Authored-By` lines for Claude in git commit messages
 - All code is TypeScript — no plain JavaScript files
 - Use Zod for all validation (request bodies, config, external data)
 - Use Winston for logging with module-level tags
 - Custom error classes in `src/shared/errors.ts` for domain errors
 - Express error handling through global middleware, not per-route try/catch
 - SQLite queries in repository classes, not scattered across services
+
+## Task Management
+
+1. **Plan First**: Write plan to `tasks/todo.md` with checkable items.
+2. **Verify Plan**: Check in before starting implementation.
+3. **Track Progress**: Mark items complete as you go.
+4. **Explain Changes**: High-level summary at each step.
+5. **Document Results**: Add review section to `tasks/todo.md`.
+6. **Capture Lessons**: Update `tasks/lessons.md` after corrections.
+
+## Demand Elegance (Balanced)
+
+1. For non-trivial changes: pause and ask "is there a more elegant way?"
+2. If a fix feels hacky: "Knowing everything I know now, implement the elegant solution."
+3. Skip this for simple, obvious fixes — don't over-engineer.
+4. Challenge your own work before presenting it.
+
+## Verification & Blast Radius
+
+1. **Verify Before Done**: Never mark a task complete without proving it works. Demonstrate correctness via logs, passing tests, or successful builds.
+2. **Assess the Blast Radius**: Before altering any function, interface, or component, search the `src/` directory to identify every place it is used. Guarantee your changes don't break unrelated features.
+3. **Update Tests**: Write or update unit/integration tests to cover new behavior or bug fixes whenever applicable.
+4. **Diff Review**: Diff behavior between main and your changes to ensure no unintended side effects were introduced.
+
+## Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 
 ## Spec Reference
 
