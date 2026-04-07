@@ -51,6 +51,7 @@ pr-review-system/
 │   │   │   ├── repos.routes.ts     # CRUD for tracked repositories
 │   │   │   ├── settings.routes.ts  # GET/PATCH settings, config management from UI
 │   │   │   ├── cleanup.routes.ts   # POST cleanup trigger, GET preview
+│   │   │   ├── poll.routes.ts      # POST manual poll trigger ("Check for PRs")
 │   │   │   └── status.routes.ts    # System health and queue status
 │   │   └── middleware/
 │   │       ├── error-handler.ts    # Global error handling middleware

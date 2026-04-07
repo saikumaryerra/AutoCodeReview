@@ -40,10 +40,10 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
                      "Lower values mean faster detection but more API calls.",
         category: "polling",
         type: "number",
-        default: 120,
+        default: 3600,
         editable: true,
         requiresRestart: false,
-        validation: z.number().min(30).max(3600),
+        validation: z.number().min(30).max(86400),
         sensitive: false,
     },
     {

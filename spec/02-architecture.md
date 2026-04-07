@@ -28,7 +28,7 @@
 
 The system consists of five major components, each of which becomes a distinct module in the codebase:
 
-**Poller Service** — A background process that runs on a configurable interval (default: every 2 minutes). It iterates over all tracked repositories, uses the appropriate **GitProvider** implementation (GitHub or Azure DevOps) to list open PRs and their commits, compares the latest commit SHA against what has already been reviewed, and enqueues any new work into a review queue. The poller is the only component that talks to external git hosting APIs.
+**Poller Service** — A background process that runs on a configurable interval (default: every 60 minutes). A "Check for PRs" button in the UI allows triggering an immediate poll without waiting for the next scheduled cycle. It iterates over all tracked repositories, uses the appropriate **GitProvider** implementation (GitHub or Azure DevOps) to list open PRs and their commits, compares the latest commit SHA against what has already been reviewed, and enqueues any new work into a review queue. The poller is the only component that talks to external git hosting APIs.
 
 **Review Engine** — The core of the system. When a new commit needs reviewing, this component checks out the correct branch locally, then spawns a `claude` CLI process in non-interactive mode with a carefully crafted prompt. It captures Claude CLI's stdout, parses the structured review output (JSON), and writes it to the database. Reviews are performed one at a time to avoid overwhelming the system.
 
