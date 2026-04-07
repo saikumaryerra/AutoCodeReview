@@ -1,0 +1,50 @@
+# ============================================================================
+# .dockerignore — keep the build context lean
+# ============================================================================
+
+# Dependencies (rebuilt inside container)
+node_modules/
+frontend/node_modules/
+
+# Build artifacts (rebuilt inside container)
+dist/
+frontend/dist/
+
+# Runtime data (lives in volumes, never baked into image)
+data/
+
+# Environment secrets (injected at runtime via env_file)
+.env
+.env.*
+!.env.example
+
+# Version control metadata
+.git/
+.gitignore
+
+# IDE and OS artifacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker files (no recursive builds)
+Dockerfile
+Dockerfile.dev
+docker-compose*.yml
+
+# Documentation and specs (not needed at runtime)
+docs/
+spec/
+*.md
+!README.md
+
+# Claude agent state
+.claude/
+
+# Task tracking
+tasks/
