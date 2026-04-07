@@ -56,7 +56,7 @@ The section has a "Save Changes" button at the bottom that collects all modified
 
 **Tracked Repositories** — A table listing all repositories with columns for name, provider (GitHub icon or Azure DevOps icon), status (active/paused), last polled time, and total review count. Each row has a toggle to pause/resume polling and a delete button (with confirmation modal that warns "This will stop polling — existing reviews are preserved"). An "Add Repository" button opens a form with a provider selector dropdown (GitHub or Azure DevOps), a repo name input, and a default branch input.
 
-**System Status** — Displays the live system health data from the `/api/v1/status` endpoint: uptime, queue depth, whether Claude CLI is available (green dot or red dot), the currently running review (if any), and the last/next poll times. This section auto-refreshes every 10 seconds.
+**System Status** — Displays the live system health data from the `/api/v1/status` endpoint: uptime, queue depth, whether Claude CLI is available (green dot or red dot), the currently running review (if any), and the last/next poll times. This section auto-refreshes every 10 seconds. A prominent **"Check for PRs"** button triggers `POST /api/v1/poll` to run an immediate polling cycle without waiting for the next scheduled interval. While the poll is running, the button shows a spinner and is disabled to prevent duplicate triggers. On completion, a toast notification shows "Poll complete — found N new commit(s) to review" with the count from the response. If a poll is already in progress (409), the button remains disabled and shows "Poll in progress...".
 
 **Data Retention & Storage** — Displays the current retention policy (read from the `review.retentionDays` setting, which is now editable in the Configuration section above) and the current disk usage. At the top, a summary line reads "Reviews older than 90 days are automatically deleted daily at 3:00 AM" (or "Automatic cleanup is disabled" if `retentionDays = 0`). Below that, a storage breakdown shows the SQLite database size and the total size of all git clones. A "pending cleanup" box shows how many reviews would be deleted by the next scheduled run (fetched from `/api/v1/cleanup/preview`) along with the oldest review date. A "Run Cleanup Now" button triggers the manual cleanup endpoint with a confirmation modal that shows the preview count: "This will permanently delete 142 reviews and prune all git clones. This action cannot be undone." After the cleanup runs, the page shows a success banner with the number of reviews deleted and the disk space reclaimed.
 
@@ -98,6 +98,10 @@ export const cleanupApi = {
         api.get('/cleanup/preview', { params: retentionDays ? { retention_days: retentionDays } : {} }),
     trigger: (retentionDays?: number) =>
         api.post('/cleanup', retentionDays ? { retention_days: retentionDays } : {}),
+};
+
+export const pollerApi = {
+    triggerPoll: () => api.post('/poll'),
 };
 
 export const statusApi = {

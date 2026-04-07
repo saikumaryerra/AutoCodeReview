@@ -218,6 +218,36 @@ Response:
 
 ---
 
+**POST /api/v1/poll**
+Manually trigger an immediate polling cycle across all active repositories. Useful when you don't want to wait for the next scheduled poll (which defaults to every 60 minutes). Returns a summary of what was found. If a poll is already in progress, returns 409 Conflict.
+
+Response:
+```json
+{
+    "data": {
+        "repos_polled": 5,
+        "new_commits_found": 2,
+        "reviews_enqueued": 2,
+        "duration_ms": 3400,
+        "details": [
+            { "repo": "myorg/backend-api", "new_commits": 1 },
+            { "repo": "myorg/frontend-app", "new_commits": 1 },
+            { "repo": "myorg/shared-lib", "new_commits": 0 }
+        ]
+    }
+}
+```
+
+If a poll is already running:
+```json
+{
+    "error": "A polling cycle is already in progress",
+    "started_at": "2026-04-08T14:30:00Z"
+}
+```
+
+---
+
 **POST /api/v1/reviews/trigger**
 Manually trigger a review for a specific PR and commit. Useful for retrying failed reviews or reviewing older commits.
 
@@ -299,8 +329,8 @@ Response:
             "description": "How often to check for new PRs and commits, in seconds.",
             "category": "polling",
             "type": "number",
-            "current_value": 120,
-            "default_value": 120,
+            "current_value": 3600,
+            "default_value": 3600,
             "is_overridden": false,
             "editable": true,
             "requires_restart": false,

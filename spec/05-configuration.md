@@ -30,8 +30,8 @@ AZURE_DEVOPS_ORG_URL=https://dev.azure.com/myorg
 AZURE_DEVOPS_REPOS=MyProject/backend-service,MyProject/web-frontend
 
 # ── Polling ─────────────────────────────────────────
-# How often to check for new PRs/commits, in seconds (default: 120)
-POLL_INTERVAL_SECONDS=120
+# How often to check for new PRs/commits, in seconds (default: 3600 = 60 minutes)
+POLL_INTERVAL_SECONDS=3600
 
 # ── Claude CLI ──────────────────────────────────────
 # Path to claude binary (default: "claude" — assumes it's in PATH)
@@ -107,7 +107,7 @@ const ConfigSchema = z.object({
     repos: z.array(z.string().regex(/^[^/]+\/[^/]+$/)),   // "project/repo" format
   }),
   polling: z.object({
-    intervalSeconds: z.number().min(30).default(120),
+    intervalSeconds: z.number().min(30).default(3600),
   }),
   claude: z.object({
     cliPath: z.string().default("claude"),
@@ -159,7 +159,7 @@ export const config = ConfigSchema.parse({
     repos: splitCsv(process.env.AZURE_DEVOPS_REPOS),
   },
   polling: {
-    intervalSeconds: Number(process.env.POLL_INTERVAL_SECONDS) || 120,
+    intervalSeconds: Number(process.env.POLL_INTERVAL_SECONDS) || 3600,
   },
   claude: {
     cliPath: process.env.CLAUDE_CLI_PATH || "claude",
