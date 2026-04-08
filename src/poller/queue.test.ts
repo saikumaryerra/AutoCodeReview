@@ -12,6 +12,7 @@ function makeJob(id: string) {
         commitSha: 'abc1234567890',
         commitMessage: 'test commit',
         branchName: 'feature/test',
+        targetBranch: 'main',
         enqueuedAt: new Date(),
     };
 }

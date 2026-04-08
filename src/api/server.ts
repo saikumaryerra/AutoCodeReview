@@ -104,9 +104,9 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
     app.use(
         '/api/v1/repos',
         createReposRouter({
-            reposRepo: reposRepo as any,
+            db,
             providerFactory: providerFactory as any,
-        } as any)
+        })
     );
 
     app.use(

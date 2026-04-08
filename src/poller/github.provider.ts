@@ -139,6 +139,12 @@ export class GitHubProvider implements GitProvider {
         return `https://${this.token}@github.com/${repoFullName}.git`;
     }
 
+    async getDefaultBranch(repoFullName: string): Promise<string> {
+        const { owner, repo } = this.splitRepo(repoFullName);
+        const { data } = await this.octokit.rest.repos.get({ owner, repo });
+        return data.default_branch;
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private splitRepo(repoFullName: string): { owner: string; repo: string } {

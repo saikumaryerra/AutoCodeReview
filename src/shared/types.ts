@@ -28,6 +28,7 @@ export interface Review {
     commit_sha: string;
     commit_message: string | null;
     branch_name: string;
+    target_branch?: string;
     summary: string;
     severity: Severity;
     findings: Finding[];
@@ -62,6 +63,7 @@ export interface ReviewJob {
     commitSha: string;
     commitMessage: string;
     branchName: string;
+    targetBranch: string;
     enqueuedAt: Date;
 }
 
@@ -175,17 +177,17 @@ export interface SystemStatus {
     claude_cli_available: boolean;
     retention: {
         enabled: boolean;
-        retentionDays: number;
-        nextCleanupAt: string | null;
-        pendingDeletion: {
-            reviewCount: number;
-            oldestReviewDate: string | null;
+        retention_days: number;
+        next_cleanup_at: string | null;
+        pending_deletion: {
+            review_count: number;
+            oldest_review_date: string | null;
         };
     };
     storage: {
-        dbSizeBytes: number;
-        totalCloneSizeBytes: number;
-        cloneCount: number;
+        db_size_bytes: number;
+        total_clone_size_bytes: number;
+        clone_count: number;
     };
 }
 
@@ -215,4 +217,6 @@ export interface GitProvider {
     ): Promise<ProviderFile[]>;
 
     getCloneUrl(repoFullName: string): string;
+
+    getDefaultBranch(repoFullName: string): Promise<string>;
 }

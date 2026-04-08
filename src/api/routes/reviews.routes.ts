@@ -183,6 +183,7 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 commitSha: commit_sha,
                 commitMessage: 'Manual trigger',
                 branchName: repoRow?.default_branch ?? 'main',
+                targetBranch: repoRow?.default_branch ?? 'main',
                 enqueuedAt: new Date(),
             };
 

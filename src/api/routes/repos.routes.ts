@@ -56,7 +56,7 @@ interface RepoWithCountRow extends RepoRow {
 // ── Dependencies interface ────────────────────────────────────────
 
 export interface ReposRouterDeps {
-    reposRepo: Database.Database;
+    db: Database.Database;
     providerFactory: { getProvider(name: Provider): unknown };
 }
 
@@ -64,7 +64,7 @@ export interface ReposRouterDeps {
 
 export function createReposRouter(deps: ReposRouterDeps): Router {
     const router = Router();
-    const db = deps.reposRepo;
+    const db = deps.db;
 
     // GET / — List all tracked repos with review_count
     router.get(

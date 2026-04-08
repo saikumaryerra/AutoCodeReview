@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { validate, validateQuery } from '../middleware/validate.js';
 import { createModuleLogger } from '../../shared/logger.js';
 import type Database from 'better-sqlite3';
-import type { CleanupPreview, CleanupResult, GitCloneInfo } from '../../shared/types.js';
+import type { GitCloneInfo } from '../../shared/types.js';
 import type { ConfigService } from '../../config/config.service.js';
 
 const logger = createModuleLogger('cleanup-routes');
@@ -32,7 +32,7 @@ function asyncHandler(fn: AsyncHandler): import('express').RequestHandler {
 // ── Dependencies interface ────────────────────────────────────────
 
 export interface CleanupRepoDeps {
-    previewCleanup(retentionDays: number): CleanupPreview;
+    previewCleanup(retentionDays: number): { reviewCount: number; oldestReviewDate: string | null };
     deleteOldReviews(retentionDays: number): { reviewsDeleted: number; seenCommitsDeleted: number };
 }
 
@@ -85,16 +85,31 @@ export function createCleanupRouter(deps: CleanupRouterDeps): Router {
 
             const totalCloneSize = clones.reduce((sum, c) => sum + c.sizeBytes, 0);
 
-            const result: CleanupPreview = {
-                ...preview,
-                orphanedClones: orphanedClones.map((o) => ({
-                    repoFullName: o.repo_full_name,
-                    sizeBytes: o.size_bytes,
-                })),
-                totalCloneSize,
-            };
+            // Get total review count for percentage calculation
+            const totalRow = db
+                .prepare('SELECT COUNT(*) AS total FROM reviews')
+                .get() as { total: number };
+            const totalReviews = totalRow.total;
 
-            res.json({ data: result });
+            // Compute cutoff date
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+            // Return snake_case keys to match frontend expectations
+            res.json({
+                data: {
+                    retention_days: retentionDays,
+                    cutoff_date: cutoffDate.toISOString(),
+                    reviews_to_delete: preview.reviewCount,
+                    oldest_review_date: preview.oldestReviewDate,
+                    total_reviews: totalReviews,
+                    percentage_to_delete: totalReviews > 0
+                        ? Math.round((preview.reviewCount / totalReviews) * 100)
+                        : 0,
+                    orphaned_clones: orphanedClones,
+                    total_clone_size_bytes: totalCloneSize,
+                },
+            });
         })
     );
 
@@ -176,15 +191,15 @@ export function createCleanupRouter(deps: CleanupRouterDeps): Router {
 
             const durationMs = Date.now() - startTime;
 
-            const result: CleanupResult = {
-                reviewsDeleted: dbResult.reviewsDeleted,
-                seenCommitsDeleted: dbResult.seenCommitsDeleted,
-                clonesDeleted,
-                cloneSpaceFreedBytes,
-                cloneSpacePrunedBytes,
-                durationMs,
-                dbSizeBeforeBytes,
-                dbSizeAfterBytes,
+            const result = {
+                reviews_deleted: dbResult.reviewsDeleted,
+                seen_commits_deleted: dbResult.seenCommitsDeleted,
+                clones_deleted: clonesDeleted,
+                clone_space_freed_bytes: cloneSpaceFreedBytes,
+                clone_space_pruned_bytes: cloneSpacePrunedBytes,
+                duration_ms: durationMs,
+                db_size_before_bytes: dbSizeBeforeBytes,
+                db_size_after_bytes: dbSizeAfterBytes,
             };
 
             logger.info('Cleanup completed', result);

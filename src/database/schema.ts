@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     commit_sha          TEXT NOT NULL,
     commit_message      TEXT,
     branch_name         TEXT NOT NULL,
+    target_branch       TEXT NOT NULL DEFAULT 'main',
 
     summary             TEXT NOT NULL,
     severity            TEXT NOT NULL

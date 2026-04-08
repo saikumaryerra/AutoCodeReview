@@ -74,12 +74,25 @@ async function main() {
     for (const { fullName, provider } of configuredRepos) {
         const existing = reposRepo.getByFullName(fullName);
         if (!existing) {
+            // Auto-detect the default branch from the provider
+            let defaultBranch = 'main';
+            try {
+                const gitProvider = await providerFactory.getProvider(provider as any);
+                defaultBranch = await gitProvider.getDefaultBranch(fullName);
+                logger.info(`Detected default branch: ${defaultBranch}`, { repo: fullName });
+            } catch (err) {
+                logger.warn('Could not detect default branch, using "main"', {
+                    repo: fullName,
+                    error: (err as Error).message,
+                });
+            }
+
             reposRepo.insert({
                 id: uuid(),
                 full_name: fullName,
                 provider,
                 org_url: provider === 'azure_devops' ? (config.azureDevOps.orgUrl ?? null) : null,
-                default_branch: 'main',
+                default_branch: defaultBranch,
                 added_at: new Date().toISOString(),
                 last_polled_at: null,
                 is_active: true,

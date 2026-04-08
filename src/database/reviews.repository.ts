@@ -111,12 +111,12 @@ export class ReviewsRepository {
         const stmt = this.db.prepare(`
             INSERT INTO reviews (
                 id, repo_full_name, provider, pr_number, pr_title, pr_author,
-                commit_sha, commit_message, branch_name,
+                commit_sha, commit_message, branch_name, target_branch,
                 summary, severity, findings, raw_output, files_reviewed, stats,
                 review_duration_ms, claude_model, status, error_message, created_at
             ) VALUES (
                 @id, @repo_full_name, @provider, @pr_number, @pr_title, @pr_author,
-                @commit_sha, @commit_message, @branch_name,
+                @commit_sha, @commit_message, @branch_name, @target_branch,
                 @summary, @severity, @findings, @raw_output, @files_reviewed, @stats,
                 @review_duration_ms, @claude_model, @status, @error_message, @created_at
             )
@@ -132,6 +132,7 @@ export class ReviewsRepository {
             commit_sha: review.commit_sha,
             commit_message: review.commit_message,
             branch_name: review.branch_name,
+            target_branch: review.target_branch ?? 'main',
             summary: review.summary,
             severity: review.severity,
             findings: JSON.stringify(review.findings),

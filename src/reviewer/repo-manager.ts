@@ -46,17 +46,8 @@ export class RepoManager {
 
         await gitFetch(repoPath);
 
-        // Checkout the branch first, then the exact commit
-        try {
-            await gitCheckout(repoPath, branchName);
-        } catch (err) {
-            logger.warn('Branch checkout failed, trying origin-prefixed branch', {
-                branchName,
-                error: (err as Error).message,
-            });
-            await gitCheckout(repoPath, `origin/${branchName}`);
-        }
-
+        // Checkout the exact commit SHA (detached HEAD).
+        // We don't need the branch itself — just the right code at that commit.
         await gitCheckout(repoPath, commitSha);
 
         logger.info('Repository prepared', { repoFullName, commitSha: commitSha.substring(0, 8) });

@@ -38,13 +38,13 @@ export interface PollerServiceDeps {
 
 export interface CleanupRepoDeps {
     previewCleanup(retentionDays: number): {
-        reviewsToDelete: number;
+        reviewCount: number;
         oldestReviewDate: string | null;
     };
 }
 
 export interface RepoManagerDeps {
-    listClones(): Array<{ sizeBytes: number }>;
+    listClones(): Promise<Array<{ sizeBytes: number }>>;
     getReposDir(): string;
 }
 
@@ -116,7 +116,7 @@ export function createStatusRouter(deps: StatusRouterDeps): Router {
                 try {
                     const preview = cleanupRepo.previewCleanup(retentionDays);
                     pendingDeletion = {
-                        reviewCount: preview.reviewsToDelete,
+                        reviewCount: preview.reviewCount,
                         oldestReviewDate: preview.oldestReviewDate,
                     };
                 } catch (err) {
@@ -135,7 +135,7 @@ export function createStatusRouter(deps: StatusRouterDeps): Router {
                 // DB file may not exist yet
             }
 
-            const clones = repoManager.listClones();
+            const clones = await repoManager.listClones();
             const totalCloneSizeBytes = clones.reduce((sum, c) => sum + c.sizeBytes, 0);
             const cloneCount = clones.length;
 
@@ -150,17 +150,17 @@ export function createStatusRouter(deps: StatusRouterDeps): Router {
                 claude_cli_available: claudeCliAvailable,
                 retention: {
                     enabled: retentionEnabled,
-                    retentionDays,
-                    nextCleanupAt: null, // Filled in by the cleanup scheduler if available
-                    pendingDeletion: {
-                        reviewCount: pendingDeletion.reviewCount,
-                        oldestReviewDate: pendingDeletion.oldestReviewDate,
+                    retention_days: retentionDays,
+                    next_cleanup_at: null, // Filled in by the cleanup scheduler if available
+                    pending_deletion: {
+                        review_count: pendingDeletion.reviewCount,
+                        oldest_review_date: pendingDeletion.oldestReviewDate,
                     },
                 },
                 storage: {
-                    dbSizeBytes,
-                    totalCloneSizeBytes,
-                    cloneCount,
+                    db_size_bytes: dbSizeBytes,
+                    total_clone_size_bytes: totalCloneSizeBytes,
+                    clone_count: cloneCount,
                 },
             };
 

@@ -40,7 +40,7 @@ FROM node:20-slim AS runtime
 #   unzip — some Claude CLI install paths need it
 #   ca-certificates — HTTPS connectivity
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl unzip ca-certificates && \
+    apt-get install -y --no-install-recommends git curl unzip ca-certificates gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Claude CLI globally — the core review engine
@@ -71,12 +71,11 @@ VOLUME ["/app/data"]
 ENV NODE_ENV=production
 ENV DB_PATH=/app/data/reviews.db
 ENV REPOS_DIR=/app/data/repos
-ENV API_PORT=3001
+ENV API_PORT=9998
 
-EXPOSE 3001
+EXPOSE 9998
 
-# Run as non-root
-USER prreview
-
+# Entrypoint runs as root to fix mounted file permissions,
+# then drops to prreview via gosu/su-exec for the CMD.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]

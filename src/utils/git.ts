@@ -5,7 +5,9 @@ const logger = createModuleLogger('git');
 
 export async function gitClone(url: string, targetDir: string): Promise<void> {
     logger.debug(`Cloning ${url.replace(/\/\/[^@]+@/, '//***@')} to ${targetDir}`);
-    const result = await execCommand('git', ['clone', '--depth', '50', url, targetDir], {
+    // Use --no-single-branch so all remote branch refs are fetched (not just the default).
+    // This is required for checking out PR branches later.
+    const result = await execCommand('git', ['clone', '--depth', '50', '--no-single-branch', url, targetDir], {
         timeoutMs: 300_000,
     });
     if (result.exitCode !== 0) {
@@ -14,6 +16,13 @@ export async function gitClone(url: string, targetDir: string): Promise<void> {
 }
 
 export async function gitFetch(repoDir: string): Promise<void> {
+    // Ensure the remote is configured to fetch all branches, not just
+    // the default one (shallow single-branch clones set a narrow refspec).
+    await execCommand('git', ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], {
+        cwd: repoDir,
+        timeoutMs: 10_000,
+    });
+
     const result = await execCommand('git', ['fetch', '--all', '--prune'], {
         cwd: repoDir,
         timeoutMs: 120_000,
@@ -31,8 +40,9 @@ export async function gitCheckout(repoDir: string, ref: string): Promise<void> {
     });
 
     if (result.exitCode !== 0) {
-        // Try fetching the specific ref and checkout again
-        await execCommand('git', ['fetch', 'origin', ref], {
+        // On shallow clones the commit may not exist locally yet.
+        // Deepen the fetch to include the specific ref.
+        await execCommand('git', ['fetch', 'origin', ref, '--depth=50'], {
             cwd: repoDir,
             timeoutMs: 60_000,
         });
@@ -78,4 +88,16 @@ export async function gitGetCurrentBranch(repoDir: string): Promise<string> {
         timeoutMs: 10_000,
     });
     return result.stdout.trim();
+}
+
+export async function gitGetDefaultBranch(repoDir: string): Promise<string> {
+    const result = await execCommand('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
+        cwd: repoDir,
+        timeoutMs: 10_000,
+    });
+    if (result.exitCode === 0) {
+        // Output is like "refs/remotes/origin/master" — extract the branch name
+        return result.stdout.trim().replace('refs/remotes/origin/', '');
+    }
+    return 'main'; // fallback
 }

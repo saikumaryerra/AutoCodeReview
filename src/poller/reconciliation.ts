@@ -15,6 +15,7 @@ interface PendingReviewRow {
     commit_sha: string;
     commit_message: string | null;
     branch_name: string;
+    target_branch: string;
 }
 
 /**
@@ -47,7 +48,8 @@ export function reconcileOrphanedReviews(
     // Step 2: Re-enqueue all pending reviews (including those just reset)
     const pendingRows = db.prepare(`
         SELECT r.repo_full_name, r.provider, r.pr_number, r.pr_title,
-               r.pr_author, r.commit_sha, r.commit_message, r.branch_name
+               r.pr_author, r.commit_sha, r.commit_message, r.branch_name,
+               r.target_branch
         FROM reviews r
         WHERE r.status = 'pending'
     `).all() as PendingReviewRow[];
@@ -63,6 +65,7 @@ export function reconcileOrphanedReviews(
             commitSha: row.commit_sha,
             commitMessage: row.commit_message ?? '',
             branchName: row.branch_name,
+            targetBranch: row.target_branch,
             enqueuedAt: new Date(),
         };
         queue.enqueue(job);

@@ -17,23 +17,29 @@ export async function execCommand(
         cwd?: string;
         timeoutMs?: number;
         env?: Record<string, string>;
+        stdin?: string;
     } = {}
 ): Promise<ExecResult> {
-    const { cwd, timeoutMs = 120_000, env } = options;
+    const { cwd, timeoutMs = 120_000, env, stdin } = options;
     const start = Date.now();
 
     return new Promise((resolve, reject) => {
         const proc = spawn(command, args, {
             cwd,
             env: env ? { ...process.env, ...env } : process.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
+            stdio: [stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         });
+
+        if (stdin !== undefined && proc.stdin) {
+            proc.stdin.write(stdin);
+            proc.stdin.end();
+        }
 
         const stdoutChunks: Buffer[] = [];
         const stderrChunks: Buffer[] = [];
 
-        proc.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
-        proc.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+        proc.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+        proc.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
 
         let killed = false;
         const timer = setTimeout(() => {

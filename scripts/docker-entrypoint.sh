@@ -9,6 +9,30 @@
 set -euo pipefail
 
 # --------------------------------------------------------------------------
+# 0. Fix permissions on mounted auth files (must run before dropping to user)
+# --------------------------------------------------------------------------
+# This section runs as root (see Dockerfile: entrypoint runs as root,
+# then exec's the CMD as prreview). We copy mounted auth files and fix
+# ownership so the prreview user can read/write them.
+CLAUDE_AUTH_MOUNT="/mnt/claude-auth"
+CLAUDE_JSON_MOUNT="/mnt/claude-config.json"
+TARGET_HOME="/home/prreview"
+
+if [ -d "${CLAUDE_AUTH_MOUNT}" ]; then
+    cp -a "${CLAUDE_AUTH_MOUNT}/." "${TARGET_HOME}/.claude/" 2>/dev/null || true
+    chown -R prreview:prreview "${TARGET_HOME}/.claude" 2>/dev/null || true
+    chmod -R u+rw "${TARGET_HOME}/.claude" 2>/dev/null || true
+    echo "[entrypoint] Claude auth files copied with correct permissions"
+fi
+
+if [ -f "${CLAUDE_JSON_MOUNT}" ]; then
+    cp -f "${CLAUDE_JSON_MOUNT}" "${TARGET_HOME}/.claude.json" 2>/dev/null || true
+    chown prreview:prreview "${TARGET_HOME}/.claude.json" 2>/dev/null || true
+    chmod u+rw "${TARGET_HOME}/.claude.json" 2>/dev/null || true
+    echo "[entrypoint] Claude config copied with correct permissions"
+fi
+
+# --------------------------------------------------------------------------
 # 1. Verify Claude CLI is installed and reachable
 # --------------------------------------------------------------------------
 if ! command -v claude &>/dev/null; then
@@ -21,16 +45,12 @@ CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
 echo "[entrypoint] Claude CLI found: ${CLAUDE_VERSION}"
 
 # --------------------------------------------------------------------------
-# 2. Check Claude CLI auth directory
+# 2. Verify Claude CLI auth
 # --------------------------------------------------------------------------
-CLAUDE_AUTH_DIR="${HOME}/.claude"
-if [ ! -d "${CLAUDE_AUTH_DIR}" ]; then
-    echo "[WARNING] Claude auth directory not found at ${CLAUDE_AUTH_DIR}"
-    echo "          Mount your host ~/.claude directory into the container:"
-    echo "            -v ~/.claude:/home/prreview/.claude:ro"
-    echo "          Or run 'claude' inside the container to authenticate."
+if [ -f "${TARGET_HOME}/.claude/.credentials.json" ]; then
+    echo "[entrypoint] Claude credentials present"
 else
-    echo "[entrypoint] Claude auth directory present at ${CLAUDE_AUTH_DIR}"
+    echo "[WARNING] Claude credentials not found — CLI will not be authenticated"
 fi
 
 # --------------------------------------------------------------------------
@@ -80,6 +100,6 @@ echo "  API port: ${API_PORT:-3001}"
 echo "============================================"
 
 # --------------------------------------------------------------------------
-# 6. Hand off to CMD
+# 6. Hand off to CMD as the prreview user
 # --------------------------------------------------------------------------
-exec "$@"
+exec gosu prreview "$@"

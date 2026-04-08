@@ -37,7 +37,7 @@ export class ClaudeCliExecutor {
      * is captured as JSON.
      */
     async executeReview(repoPath: string, prompt: string): Promise<ClaudeCliResult> {
-        const args = this.buildArgs(prompt);
+        const args = this.buildArgs();
 
         logger.info('Spawning Claude CLI', {
             repoPath,
@@ -49,6 +49,7 @@ export class ClaudeCliExecutor {
         const result = await execCommand(this.cliPath, args, {
             cwd: repoPath,
             timeoutMs: this.timeoutSeconds * 1000,
+            stdin: prompt,
         });
 
         const model = this.extractModel(result.stdout);
@@ -82,19 +83,17 @@ export class ClaudeCliExecutor {
     /**
      * Builds the argument list for the Claude CLI invocation.
      */
-    private buildArgs(prompt: string): string[] {
+    private buildArgs(): string[] {
         const args: string[] = [
             '--print',
             '--output-format', 'json',
-            '--max-turns', '3',
-            '--allowedTools', 'View,GlobTool,GrepTool,BatchTool',
+            '--max-turns', '8',
+            '--allowedTools', 'Read,Glob,Grep',
         ];
 
         if (this.model) {
             args.push('--model', this.model);
         }
-
-        args.push('--prompt', prompt);
 
         return args;
     }
