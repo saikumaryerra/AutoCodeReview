@@ -123,7 +123,11 @@ export function parseClaudeOutput(rawOutput: string): ParsedReview {
 
     // Step 3: Extract the `result` field from the Claude CLI envelope
     const result = envelope.result;
-    if (result === undefined || result === null) {
+    if (result === undefined || result === null || result === '') {
+        const subtype = envelope.subtype as string | undefined;
+        if (subtype === 'error_max_turns') {
+            return createFallback('Claude hit max turns limit before producing review output — increase --max-turns', model);
+        }
         return createFallback('No "result" field in Claude CLI envelope', model);
     }
 

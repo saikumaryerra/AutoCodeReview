@@ -323,6 +323,7 @@ export class PollerService {
                     commitSha: latestCommit.sha,
                     commitMessage: latestCommit.message,
                     branchName: pr.sourceBranch,
+                    targetBranch: pr.targetBranch,
                     enqueuedAt: new Date(),
                 };
 

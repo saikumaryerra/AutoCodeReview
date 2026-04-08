@@ -207,6 +207,14 @@ export class AzureDevOpsProvider implements GitProvider {
         return `https://pat:${this.token}@dev.azure.com/${org}/${project}/_git/${repo}`;
     }
 
+    async getDefaultBranch(repoFullName: string): Promise<string> {
+        const { project, repo } = this.splitRepo(repoFullName);
+        const api = this.getApi();
+        const repository = await api.getRepository(repo, project);
+        const defaultBranch = repository.defaultBranch ?? 'refs/heads/main';
+        return defaultBranch.replace('refs/heads/', '');
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private getApi(): IGitApi {

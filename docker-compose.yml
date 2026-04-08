@@ -5,7 +5,7 @@
 # Data (SQLite DB + cloned repos) persists in a named volume.
 # Claude CLI auth is mounted read-only from the host user's home directory.
 # ============================================================================
-
+name: auto-code-review-prod
 services:
   pr-review:
     build:
@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "${API_PORT:-3001}:3001"
+      - "${API_PORT:-9998}:${API_PORT:-9998}"
 
     env_file:
       - .env
@@ -23,13 +23,13 @@ services:
     volumes:
       # Persistent data: database, cloned repos, logs
       - pr-review-data:/app/data
-      # Claude CLI authentication — mounted read-only so the container can
-      # call claude without re-authenticating. The host must have already
-      # run `claude` at least once to create this directory.
-      - ~/.claude:/home/prreview/.claude:ro
+      # Claude CLI authentication — mounted read-only to /mnt, then copied
+      # to the home directory with correct permissions by the entrypoint.
+      - ~/.claude:/mnt/claude-auth:ro
+      - ~/.claude.json:/mnt/claude-config.json:ro
 
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3001/api/v1/status"]
+      test: ["CMD", "curl", "-sf", "http://localhost:${API_PORT:-9998}/api/v1/status"]
       interval: 30s
       timeout: 10s
       retries: 3

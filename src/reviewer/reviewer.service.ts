@@ -141,6 +141,7 @@ export class ReviewerService {
                 commit_sha: job.commitSha,
                 commit_message: job.commitMessage,
                 branch_name: job.branchName,
+                target_branch: job.targetBranch,
                 summary: '',
                 severity: 'info',
                 findings: [],
@@ -172,16 +173,9 @@ export class ReviewerService {
             // Prefer local diff for consistency; fall back to provider API.
             let diff: string;
             try {
-                // We need the target branch for diff. Fetch PR details from provider
-                // to find the target branch. For now, use the repo's default branch.
-                const repoRecord = this.db
-                    .prepare('SELECT default_branch FROM repositories WHERE full_name = ?')
-                    .get(job.repoFullName) as { default_branch: string } | undefined;
-
-                const targetBranch = repoRecord?.default_branch ?? 'main';
                 diff = await this.repoManager.generateDiff(
                     job.repoFullName,
-                    targetBranch,
+                    job.targetBranch,
                     job.commitSha,
                 );
             } catch (diffErr) {
