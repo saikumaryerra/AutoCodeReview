@@ -1,12 +1,12 @@
-import { useMemo } from 'react';
-import { Activity, Clock, AlertTriangle, Timer } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Activity, Clock, AlertTriangle, Timer, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useReviews } from '../hooks/useReviews';
 import { useStatus } from '../hooks/useStatus';
 import { ReviewCard } from '../components/ReviewCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
-import type { Severity } from '../types';
+import type { Severity, PrState, ReviewListParams } from '../types';
 
 const severityColors: Record<Severity, string> = {
   critical: 'bg-red-500',
@@ -24,11 +24,50 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+const PAGE_SIZE = 10;
+
 export function Dashboard() {
   const { data: status, isLoading: statusLoading, error: statusError, refetch: refetchStatus } = useStatus();
-  const { data: reviewsData, isLoading: reviewsLoading, error: reviewsError, refetch: refetchReviews } = useReviews({ limit: 20 });
+
+  // ── Filter & pagination state ──────────────────────────
+  const [page, setPage] = useState(1);
+  const [severityFilter, setSeverityFilter] = useState<Severity | ''>('');
+  const [prStateFilter, setPrStateFilter] = useState<PrState | ''>('');
+  const [sortBy, setSortBy] = useState<'created_at' | 'pr_number'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const params: ReviewListParams = {
+    page,
+    limit: PAGE_SIZE,
+    ...(severityFilter && { severity: severityFilter }),
+    ...(prStateFilter && { pr_state: prStateFilter }),
+    sort: sortBy,
+    order: sortOrder,
+  };
+
+  const { data: reviewsData, isLoading: reviewsLoading, error: reviewsError, refetch: refetchReviews } = useReviews(params);
 
   const reviews = reviewsData?.data ?? [];
+  const pagination = reviewsData?.pagination;
+  const totalPages = pagination?.total_pages ?? 1;
+
+  // Reset to page 1 when filters change
+  const handleSeverityChange = (v: string) => {
+    setSeverityFilter(v as Severity | '');
+    setPage(1);
+  };
+  const handlePrStateChange = (v: string) => {
+    setPrStateFilter(v as PrState | '');
+    setPage(1);
+  };
+  const handleSortChange = (v: string) => {
+    setSortBy(v as 'created_at' | 'pr_number');
+    setPage(1);
+  };
+  const handleOrderChange = (v: string) => {
+    setSortOrder(v as 'asc' | 'desc');
+    setPage(1);
+  };
 
   const severityBreakdown = useMemo(() => {
     const counts: Record<Severity, number> = {
@@ -98,7 +137,49 @@ export function Dashboard() {
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Recent Reviews */}
         <div className="lg:col-span-2">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Reviews</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Reviews</h3>
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => handleSortChange(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="created_at">Sort by Date</option>
+                <option value="pr_number">Sort by PR #</option>
+              </select>
+              <select
+                value={sortOrder}
+                onChange={(e) => handleOrderChange(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="desc">Newest First</option>
+                <option value="asc">Oldest First</option>
+              </select>
+              <select
+                value={prStateFilter}
+                onChange={(e) => handlePrStateChange(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">All PRs</option>
+                <option value="open">Open</option>
+                <option value="merged">Merged</option>
+                <option value="closed">Closed</option>
+              </select>
+              <select
+                value={severityFilter}
+                onChange={(e) => handleSeverityChange(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+                <option value="clean">Clean</option>
+              </select>
+            </div>
+          </div>
+
           {reviewsLoading ? (
             <LoadingSpinner message="Loading reviews..." />
           ) : reviewsError ? (
@@ -108,15 +189,76 @@ export function Dashboard() {
             />
           ) : reviews.length === 0 ? (
             <EmptyState
-              title="No reviews yet"
-              description="Reviews will appear here once pull requests are processed."
+              title="No reviews found"
+              description={
+                severityFilter || prStateFilter
+                  ? 'No reviews match the current filters.'
+                  : 'Reviews will appear here once pull requests are processed.'
+              }
             />
           ) : (
-            <div className="space-y-3">
-              {reviews.map((review) => (
-                <ReviewCard key={review.id} review={review} />
-              ))}
-            </div>
+            <>
+              <div className="space-y-3">
+                {reviews.map((review) => (
+                  <ReviewCard key={review.id} review={review} />
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-gray-500">
+                    Page {page} of {totalPages}
+                    {pagination && (
+                      <span className="ml-1 text-gray-400">
+                        ({pagination.total} total)
+                      </span>
+                    )}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (page <= 3) {
+                        pageNum = i + 1;
+                      } else if (page >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = page - 2 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setPage(pageNum)}
+                          className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium ${
+                            pageNum === page
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                      className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

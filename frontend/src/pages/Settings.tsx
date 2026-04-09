@@ -211,10 +211,20 @@ function SettingField({ setting, editValue, onChange, onReset }: SettingFieldPro
         <p className="text-xs text-gray-500 mt-0.5">{setting.description}</p>
 
         <div className="mt-2">
-          {!setting.editable || setting.sensitive ? (
+          {!setting.editable ? (
             <span className="inline-block rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-600 font-mono">
-              {String(setting.current_value)}
+              {setting.current_value == null || setting.current_value === '' || String(setting.current_value) === 'undefined'
+                ? 'Not set'
+                : String(setting.current_value)}
             </span>
+          ) : setting.sensitive ? (
+            <input
+              type="password"
+              value={String(currentVal ?? '')}
+              placeholder="Enter new value"
+              onChange={(e) => onChange(e.target.value)}
+              className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           ) : setting.type === 'boolean' ? (
             <button
               type="button"

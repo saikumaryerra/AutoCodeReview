@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     commit_message      TEXT,
     branch_name         TEXT NOT NULL,
     target_branch       TEXT NOT NULL DEFAULT 'main',
+    pr_state            TEXT CHECK(pr_state IN ('open', 'closed', 'merged')),
+    pr_url              TEXT,
 
     summary             TEXT NOT NULL,
     severity            TEXT NOT NULL

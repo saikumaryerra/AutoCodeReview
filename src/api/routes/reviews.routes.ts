@@ -20,6 +20,7 @@ const ListReviewsQuerySchema = z.object({
     commit: z.string().min(7).optional(),
     severity: z.enum(['critical', 'warning', 'info', 'clean']).optional(),
     status: z.enum(['pending', 'in_progress', 'completed', 'failed', 'skipped']).optional(),
+    pr_state: z.enum(['open', 'closed', 'merged']).optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     sort: z.enum(['created_at', 'severity', 'pr_number']).default('created_at'),
@@ -184,6 +185,8 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 commitMessage: 'Manual trigger',
                 branchName: repoRow?.default_branch ?? 'main',
                 targetBranch: repoRow?.default_branch ?? 'main',
+                prState: 'open',
+                prUrl: '',
                 enqueuedAt: new Date(),
             };
 

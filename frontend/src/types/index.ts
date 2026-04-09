@@ -1,6 +1,7 @@
 export type Severity = 'critical' | 'warning' | 'info' | 'clean' | 'praise';
 export type ReviewStatus = 'completed' | 'failed' | 'skipped' | 'pending' | 'in_progress';
 export type Provider = 'github' | 'azure_devops';
+export type PrState = 'open' | 'closed' | 'merged';
 export type FindingType = 'bug' | 'security' | 'performance' | 'style' | 'maintainability' | 'praise' | 'other';
 
 export interface Finding {
@@ -26,6 +27,8 @@ export interface ReviewListItem {
   commit_sha: string;
   commit_message: string;
   branch_name: string;
+  pr_state: PrState | null;
+  pr_url: string | null;
   severity: Severity;
   findings_count: number;
   status: ReviewStatus;
@@ -43,6 +46,8 @@ export interface ReviewDetail {
   commit_sha: string;
   commit_message: string;
   branch_name: string;
+  pr_state: PrState | null;
+  pr_url: string | null;
   summary: string;
   severity: Severity;
   findings: Finding[];
@@ -92,6 +97,7 @@ export interface ReviewListParams {
   commit?: string;
   severity?: Severity;
   status?: ReviewStatus;
+  pr_state?: PrState;
   page?: number;
   limit?: number;
   sort?: 'created_at' | 'severity' | 'pr_number';

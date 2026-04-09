@@ -38,6 +38,16 @@ export function initializeDatabase(dbPath: string): Database.Database {
 
     db.exec(getSchemaSQL());
 
+    // ── Migrations for existing databases ────────────────────────
+    // ALTER TABLE is not idempotent in SQLite, so wrap in try/catch.
+    const migrations = [
+        'ALTER TABLE reviews ADD COLUMN pr_state TEXT CHECK(pr_state IN (\'open\', \'closed\', \'merged\'))',
+        'ALTER TABLE reviews ADD COLUMN pr_url TEXT',
+    ];
+    for (const sql of migrations) {
+        try { db.exec(sql); } catch { /* column already exists */ }
+    }
+
     log.info('Database initialized', { path: dbPath });
 
     return db;

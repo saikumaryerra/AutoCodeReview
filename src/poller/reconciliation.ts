@@ -16,6 +16,8 @@ interface PendingReviewRow {
     commit_message: string | null;
     branch_name: string;
     target_branch: string;
+    pr_state: string | null;
+    pr_url: string | null;
 }
 
 /**
@@ -49,7 +51,7 @@ export function reconcileOrphanedReviews(
     const pendingRows = db.prepare(`
         SELECT r.repo_full_name, r.provider, r.pr_number, r.pr_title,
                r.pr_author, r.commit_sha, r.commit_message, r.branch_name,
-               r.target_branch
+               r.target_branch, r.pr_state, r.pr_url
         FROM reviews r
         WHERE r.status = 'pending'
     `).all() as PendingReviewRow[];
@@ -66,6 +68,8 @@ export function reconcileOrphanedReviews(
             commitMessage: row.commit_message ?? '',
             branchName: row.branch_name,
             targetBranch: row.target_branch,
+            prState: (row.pr_state as ReviewJob['prState']) ?? 'open',
+            prUrl: row.pr_url ?? '',
             enqueuedAt: new Date(),
         };
         queue.enqueue(job);

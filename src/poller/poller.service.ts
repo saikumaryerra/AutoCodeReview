@@ -209,6 +209,9 @@ export class PollerService {
                 }
             }
 
+            // ── Update PR states for reviews still marked as "open" ──
+            await this.syncPrStates(activeRepos);
+
             const durationMs = Date.now() - startTime;
 
             log.info('Poll cycle complete', {
@@ -324,6 +327,8 @@ export class PollerService {
                     commitMessage: latestCommit.message,
                     branchName: pr.sourceBranch,
                     targetBranch: pr.targetBranch,
+                    prState: pr.state,
+                    prUrl: pr.url,
                     enqueuedAt: new Date(),
                 };
 
@@ -406,6 +411,67 @@ export class PollerService {
             `);
         }
         this.stmtUpdateLastPolled.run(repoFullName);
+    }
+
+    // ── PR state sync ─────────────────────────────────────────────
+
+    /**
+     * For each repo, find reviews still marked as pr_state='open' and
+     * check the provider for their current state. This catches PRs that
+     * were merged or closed since the last poll.
+     */
+    private async syncPrStates(repos: RepoRow[]): Promise<void> {
+        const openPrRows = this.db.prepare(`
+            SELECT DISTINCT repo_full_name, pr_number
+            FROM reviews
+            WHERE (pr_state = 'open' OR pr_state IS NULL) AND repo_full_name = ?
+        `);
+
+        const updateStmt = this.db.prepare(`
+            UPDATE reviews SET pr_state = ?
+            WHERE repo_full_name = ? AND pr_number = ?
+        `);
+
+        for (const repo of repos) {
+            try {
+                const provider = await this.providerFactory.getProvider(
+                    repo.provider as Provider
+                );
+
+                const rows = openPrRows.all(repo.full_name) as Array<{
+                    repo_full_name: string;
+                    pr_number: number;
+                }>;
+
+                for (const row of rows) {
+                    try {
+                        const state = await provider.getPRState(
+                            row.repo_full_name,
+                            row.pr_number
+                        );
+                        updateStmt.run(state, row.repo_full_name, row.pr_number);
+                        if (state !== 'open') {
+                            log.info('PR state updated', {
+                                repo: row.repo_full_name,
+                                pr: row.pr_number,
+                                newState: state,
+                            });
+                        }
+                    } catch (err) {
+                        log.debug('Failed to fetch PR state', {
+                            repo: row.repo_full_name,
+                            pr: row.pr_number,
+                            error: err instanceof Error ? err.message : String(err),
+                        });
+                    }
+                }
+            } catch (err) {
+                log.warn('Failed to sync PR states for repo', {
+                    repo: repo.full_name,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
     }
 
     // ── Scheduling ───────────────────────────────────────────────

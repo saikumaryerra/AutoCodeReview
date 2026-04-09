@@ -125,12 +125,16 @@ export class AzureDevOpsProvider implements GitProvider {
 
         const commits = await api.getPullRequestCommits(repo, prNumber, project);
 
-        return commits.map((c) => ({
-            sha: c.commitId ?? '',
-            message: (c.comment ?? '').split('\n')[0],
-            author: c.author?.name ?? 'unknown',
-            date: c.author?.date?.toISOString() ?? new Date().toISOString(),
-        }));
+        // Sort chronologically (oldest first) to match GitHub's ordering.
+        // Azure DevOps returns commits newest-first by default.
+        return commits
+            .map((c) => ({
+                sha: c.commitId ?? '',
+                message: (c.comment ?? '').split('\n')[0],
+                author: c.author?.name ?? 'unknown',
+                date: c.author?.date?.toISOString() ?? new Date().toISOString(),
+            }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }
 
     /**
@@ -213,6 +217,17 @@ export class AzureDevOpsProvider implements GitProvider {
         const repository = await api.getRepository(repo, project);
         const defaultBranch = repository.defaultBranch ?? 'refs/heads/main';
         return defaultBranch.replace('refs/heads/', '');
+    }
+
+    async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {
+        const { project, repo } = this.splitRepo(repoFullName);
+        const api = this.getApi();
+        const pr = await api.getPullRequestById(prNumber, project);
+        switch (pr.status) {
+            case PullRequestStatus.Completed: return 'merged';
+            case PullRequestStatus.Abandoned: return 'closed';
+            default: return 'open';
+        }
     }
 
     // ── Private helpers ──────────────────────────────────────────

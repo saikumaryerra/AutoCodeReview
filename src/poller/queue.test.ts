@@ -13,6 +13,8 @@ function makeJob(id: string) {
         commitMessage: 'test commit',
         branchName: 'feature/test',
         targetBranch: 'main',
+        prState: 'open' as const,
+        prUrl: 'https://example.com/pr/1',
         enqueuedAt: new Date(),
     };
 }
