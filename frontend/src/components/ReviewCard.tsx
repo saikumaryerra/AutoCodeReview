@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { GitCommit, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { SeverityBadge } from './SeverityBadge';
+import { PrStateBadge } from './PrStateBadge';
 import type { ReviewListItem } from '../types';
 
 interface ReviewCardProps {
@@ -34,7 +35,10 @@ export function ReviewCard({ review }: ReviewCardProps) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <SeverityBadge severity={review.severity} />
+          <div className="flex items-center gap-1.5">
+            <PrStateBadge state={review.pr_state} />
+            <SeverityBadge severity={review.severity} />
+          </div>
           <span className="text-xs text-gray-400">
             {formatDistanceToNow(new Date(review.created_at), { addSuffix: true })}
           </span>

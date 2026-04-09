@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { Review, ReviewStatus, Severity, Provider } from '../shared/types.js';
+import type { Review, ReviewStatus, Severity, Provider, PrState } from '../shared/types.js';
 import { createModuleLogger } from '../shared/logger.js';
 
 const log = createModuleLogger('reviews-repo');
@@ -17,6 +17,8 @@ interface ReviewRow {
     commit_sha: string;
     commit_message: string | null;
     branch_name: string;
+    pr_state: string | null;
+    pr_url: string | null;
     summary: string;
     severity: string;
     findings: string;
@@ -50,6 +52,7 @@ export interface ReviewListFilters {
     commit?: string;
     severity?: Severity;
     status?: ReviewStatus;
+    pr_state?: PrState;
     page?: number;
     limit?: number;
     sort?: 'created_at' | 'severity' | 'pr_number';
@@ -74,6 +77,7 @@ function parseReviewRow(row: ReviewRow): ParsedReview {
         provider: row.provider as Provider,
         severity: row.severity as Severity,
         status: row.status as ReviewStatus,
+        pr_state: row.pr_state as PrState | null,
         findings: JSON.parse(row.findings),
         files_reviewed: JSON.parse(row.files_reviewed),
         stats: JSON.parse(row.stats),
@@ -86,6 +90,7 @@ function parseListRow(row: ReviewListRow): ReviewListItem {
         provider: row.provider as Provider,
         severity: row.severity as Severity,
         status: row.status as ReviewStatus,
+        pr_state: row.pr_state as PrState | null,
         files_reviewed: JSON.parse(row.files_reviewed),
         stats: JSON.parse(row.stats),
         findings_count: row.findings_count,
@@ -112,11 +117,13 @@ export class ReviewsRepository {
             INSERT INTO reviews (
                 id, repo_full_name, provider, pr_number, pr_title, pr_author,
                 commit_sha, commit_message, branch_name, target_branch,
+                pr_state, pr_url,
                 summary, severity, findings, raw_output, files_reviewed, stats,
                 review_duration_ms, claude_model, status, error_message, created_at
             ) VALUES (
                 @id, @repo_full_name, @provider, @pr_number, @pr_title, @pr_author,
                 @commit_sha, @commit_message, @branch_name, @target_branch,
+                @pr_state, @pr_url,
                 @summary, @severity, @findings, @raw_output, @files_reviewed, @stats,
                 @review_duration_ms, @claude_model, @status, @error_message, @created_at
             )
@@ -133,6 +140,8 @@ export class ReviewsRepository {
             commit_message: review.commit_message,
             branch_name: review.branch_name,
             target_branch: review.target_branch ?? 'main',
+            pr_state: review.pr_state ?? null,
+            pr_url: review.pr_url ?? null,
             summary: review.summary,
             severity: review.severity,
             findings: JSON.stringify(review.findings),
@@ -294,6 +303,10 @@ export class ReviewsRepository {
             conditions.push('status = @status');
             params.status = filters.status;
         }
+        if (filters.pr_state) {
+            conditions.push('pr_state = @pr_state');
+            params.pr_state = filters.pr_state;
+        }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -308,7 +321,7 @@ export class ReviewsRepository {
         const dataSQL = `
             SELECT
                 id, repo_full_name, provider, pr_number, pr_title, pr_author,
-                commit_sha, commit_message, branch_name,
+                commit_sha, commit_message, branch_name, pr_state, pr_url,
                 summary, severity, files_reviewed, stats,
                 review_duration_ms, claude_model, status, error_message, created_at,
                 json_array_length(findings) AS findings_count

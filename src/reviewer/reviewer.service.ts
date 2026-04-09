@@ -142,6 +142,8 @@ export class ReviewerService {
                 commit_message: job.commitMessage,
                 branch_name: job.branchName,
                 target_branch: job.targetBranch,
+                pr_state: job.prState,
+                pr_url: job.prUrl,
                 summary: '',
                 severity: 'info',
                 findings: [],

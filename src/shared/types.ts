@@ -5,6 +5,7 @@ export type Severity = "critical" | "warning" | "info" | "clean";
 export type FindingSeverity = "critical" | "warning" | "info" | "praise";
 export type FindingType = "bug" | "security" | "performance" | "style" | "maintainability" | "suggestion" | "praise";
 export type ReviewStatus = "pending" | "in_progress" | "completed" | "failed" | "skipped";
+export type PrState = "open" | "closed" | "merged";
 
 export interface Finding {
     type: FindingType;
@@ -29,6 +30,8 @@ export interface Review {
     commit_message: string | null;
     branch_name: string;
     target_branch?: string;
+    pr_state: PrState | null;
+    pr_url: string | null;
     summary: string;
     severity: Severity;
     findings: Finding[];
@@ -64,6 +67,8 @@ export interface ReviewJob {
     commitMessage: string;
     branchName: string;
     targetBranch: string;
+    prState: PrState;
+    prUrl: string;
     enqueuedAt: Date;
 }
 
@@ -219,4 +224,6 @@ export interface GitProvider {
     getCloneUrl(repoFullName: string): string;
 
     getDefaultBranch(repoFullName: string): Promise<string>;
+
+    getPRState(repoFullName: string, prNumber: number): Promise<PrState>;
 }

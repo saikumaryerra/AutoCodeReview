@@ -62,11 +62,11 @@ export class ConfigService {
         category: string;
         type: string;
         enumValues?: string[];
-        currentValue: unknown;
-        defaultValue: unknown;
-        isOverridden: boolean;
+        current_value: unknown;
+        default_value: unknown;
+        is_overridden: boolean;
         editable: boolean;
-        requiresRestart: boolean;
+        requires_restart: boolean;
         sensitive: boolean;
     }> {
         return CONFIG_REGISTRY.map(meta => {
@@ -95,11 +95,11 @@ export class ConfigService {
                 category: meta.category,
                 type: meta.type,
                 enumValues: meta.enumValues,
-                currentValue,
-                defaultValue: defaultDisplay,
-                isOverridden: dbValue !== null,
+                current_value: currentValue ?? meta.default,
+                default_value: defaultDisplay ?? meta.default,
+                is_overridden: dbValue !== null,
                 editable: meta.editable,
-                requiresRestart: meta.requiresRestart,
+                requires_restart: meta.requiresRestart,
                 sensitive: meta.sensitive,
             };
         });

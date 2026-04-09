@@ -145,6 +145,14 @@ export class GitHubProvider implements GitProvider {
         return data.default_branch;
     }
 
+    async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {
+        const { owner, repo } = this.splitRepo(repoFullName);
+        const { data } = await this.octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+        if (data.merged) return 'merged';
+        if (data.state === 'closed') return 'closed';
+        return 'open';
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private splitRepo(repoFullName: string): { owner: string; repo: string } {

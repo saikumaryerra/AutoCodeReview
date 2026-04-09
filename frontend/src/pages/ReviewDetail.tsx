@@ -3,6 +3,7 @@ import { ArrowLeft, GitCommit, GitBranch, User, Clock, FileCode } from 'lucide-r
 import { format, formatDistanceToNow } from 'date-fns';
 import { useReview } from '../hooks/useReviews';
 import { SeverityBadge } from '../components/SeverityBadge';
+import { PrStateBadge } from '../components/PrStateBadge';
 import { ReviewBody } from '../components/ReviewBody';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
@@ -86,7 +87,10 @@ export function ReviewDetail() {
               </span>
             </div>
           </div>
-          <SeverityBadge severity={review.severity} className="text-sm px-3 py-1" />
+          <div className="flex items-center gap-2">
+            <PrStateBadge state={review.pr_state} className="text-sm px-3 py-1" />
+            <SeverityBadge severity={review.severity} className="text-sm px-3 py-1" />
+          </div>
         </div>
 
         {review.commit_message && (
