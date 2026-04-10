@@ -144,7 +144,7 @@ async function main() {
     });
 
     // 12. Schedule daily cleanup at 3:00 AM
-    cron.schedule('0 3 * * *', async () => {
+    cron.schedule('0 11 * * *', async () => {
         logger.info('=== Daily cleanup started ===');
 
         // Phase 1: Database cleanup (old reviews + seen_commits)
@@ -217,7 +217,7 @@ async function main() {
 
         logger.info('=== Daily cleanup finished ===');
     });
-    logger.info('Daily cleanup scheduled at 3:00 AM');
+    logger.info('Daily cleanup scheduled at 11:00 AM');
 
     // 13. Start the API server
     await startApiServer({
