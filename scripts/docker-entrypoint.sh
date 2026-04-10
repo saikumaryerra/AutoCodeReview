@@ -19,17 +19,30 @@ CLAUDE_JSON_MOUNT="/mnt/claude-config.json"
 TARGET_HOME="/home/prreview"
 
 if [ -d "${CLAUDE_AUTH_MOUNT}" ]; then
+    # Copy everything except credentials (settings, cache, etc.)
+    mkdir -p "${TARGET_HOME}/.claude"
     cp -a "${CLAUDE_AUTH_MOUNT}/." "${TARGET_HOME}/.claude/" 2>/dev/null || true
+
+    # Symlink credentials so the container always reads the host's
+    # current token, even after the host CLI refreshes it.
+    CRED_FILE="${CLAUDE_AUTH_MOUNT}/.credentials.json"
+    if [ -f "${CRED_FILE}" ]; then
+        rm -f "${TARGET_HOME}/.claude/.credentials.json"
+        ln -s "${CRED_FILE}" "${TARGET_HOME}/.claude/.credentials.json"
+        echo "[entrypoint] Claude credentials symlinked (live from host)"
+    fi
+
     chown -R prreview:prreview "${TARGET_HOME}/.claude" 2>/dev/null || true
     chmod -R u+rw "${TARGET_HOME}/.claude" 2>/dev/null || true
-    echo "[entrypoint] Claude auth files copied with correct permissions"
+    echo "[entrypoint] Claude auth files set up"
 fi
 
 if [ -f "${CLAUDE_JSON_MOUNT}" ]; then
-    cp -f "${CLAUDE_JSON_MOUNT}" "${TARGET_HOME}/.claude.json" 2>/dev/null || true
-    chown prreview:prreview "${TARGET_HOME}/.claude.json" 2>/dev/null || true
-    chmod u+rw "${TARGET_HOME}/.claude.json" 2>/dev/null || true
-    echo "[entrypoint] Claude config copied with correct permissions"
+    # Symlink config so it stays in sync with the host
+    rm -f "${TARGET_HOME}/.claude.json"
+    ln -s "${CLAUDE_JSON_MOUNT}" "${TARGET_HOME}/.claude.json"
+    chown -h prreview:prreview "${TARGET_HOME}/.claude.json" 2>/dev/null || true
+    echo "[entrypoint] Claude config symlinked (live from host)"
 fi
 
 # --------------------------------------------------------------------------
