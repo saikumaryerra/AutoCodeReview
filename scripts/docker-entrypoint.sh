@@ -18,6 +18,35 @@ CLAUDE_AUTH_MOUNT="/mnt/claude-auth"
 CLAUDE_JSON_MOUNT="/mnt/claude-config.json"
 TARGET_HOME="/home/prreview"
 
+# --------------------------------------------------------------------------
+# 0a. Align prreview uid/gid with the host user who owns the mounted
+#     credentials. The credentials file is mode 600, so only a uid-matched
+#     process can read it. Without this, Claude CLI silently fails auth.
+# --------------------------------------------------------------------------
+if [ -f "${CLAUDE_AUTH_MOUNT}/.credentials.json" ]; then
+    HOST_UID=$(stat -c %u "${CLAUDE_AUTH_MOUNT}/.credentials.json")
+    HOST_GID=$(stat -c %g "${CLAUDE_AUTH_MOUNT}/.credentials.json")
+    CURRENT_UID=$(id -u prreview)
+    CURRENT_GID=$(id -g prreview)
+
+    if [ "${HOST_UID}" != "${CURRENT_UID}" ] || [ "${HOST_GID}" != "${CURRENT_GID}" ]; then
+        echo "[entrypoint] Aligning prreview uid/gid ${CURRENT_UID}:${CURRENT_GID} -> ${HOST_UID}:${HOST_GID} to match mounted credentials"
+        # If another user already has the target uid/gid, remove that account
+        EXISTING_USER=$(getent passwd "${HOST_UID}" | cut -d: -f1 || true)
+        if [ -n "${EXISTING_USER}" ] && [ "${EXISTING_USER}" != "prreview" ]; then
+            userdel "${EXISTING_USER}" 2>/dev/null || true
+        fi
+        EXISTING_GROUP=$(getent group "${HOST_GID}" | cut -d: -f1 || true)
+        if [ -n "${EXISTING_GROUP}" ] && [ "${EXISTING_GROUP}" != "prreview" ]; then
+            groupdel "${EXISTING_GROUP}" 2>/dev/null || true
+        fi
+        groupmod -g "${HOST_GID}" prreview
+        usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview
+        # Reset ownership of files created under the old uid
+        chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+    fi
+fi
+
 if [ -d "${CLAUDE_AUTH_MOUNT}" ]; then
     # Copy everything except credentials (settings, cache, etc.)
     mkdir -p "${TARGET_HOME}/.claude"
