@@ -16,6 +16,7 @@ import type { RepoManager } from './repo-manager.js';
 import type { ClaudeCliExecutor } from './claude-cli.executor.js';
 import { buildReviewPrompt } from './prompt.js';
 import { parseClaudeOutput } from './parser.js';
+import { formatReviewComment } from './comment-formatter.js';
 import { createModuleLogger } from '../shared/logger.js';
 
 const logger = createModuleLogger('reviewer-service');
@@ -293,6 +294,11 @@ export class ReviewerService {
                 model: parsed.model ?? cliResult.model,
             });
 
+            // ── Step 14: Auto-post comment (if enabled) ───────────
+            if (cliResult.success) {
+                await this.maybeAutoPostComment(reviewId, provider, job, parsed, logCtx);
+            }
+
         } catch (err) {
             // ── Error path: mark as failed ────────────────────────
             const errorMessage = (err as Error).message ?? 'Unknown error';
@@ -310,6 +316,41 @@ export class ReviewerService {
         } finally {
             // ── Step 14: Clear current review ─────────────────────
             this.currentReview = null;
+        }
+    }
+
+    private async maybeAutoPostComment(
+        reviewId: string,
+        provider: GitProvider,
+        job: ReviewJob,
+        parsed: { severity: string; findings: unknown[] },
+        logCtx: Record<string, unknown>,
+    ): Promise<void> {
+        const enabled = this.configService.get<boolean>('review.autoPostComment');
+        if (!enabled) return;
+
+        const skipClean = this.configService.get<boolean>('review.autoPostSkipClean');
+        if (skipClean && parsed.findings.length === 0) {
+            logger.info('Auto-post skipped: no findings', { ...logCtx, reviewId });
+            return;
+        }
+
+        const review = this.reviewsRepo.getById(reviewId);
+        if (!review) {
+            logger.warn('Auto-post skipped: review not found after insert', { ...logCtx, reviewId });
+            return;
+        }
+
+        try {
+            const body = formatReviewComment(review);
+            const { url } = await provider.postPrComment(job.repoFullName, job.prNumber, body);
+            logger.info('Auto-posted review comment', { ...logCtx, reviewId, commentUrl: url });
+        } catch (err) {
+            logger.error('Auto-post comment failed', {
+                ...logCtx,
+                reviewId,
+                error: (err as Error).message,
+            });
         }
     }
 

@@ -38,6 +38,8 @@ const ConfigSchema = z.object({
         maxFilesChanged: z.number().default(50),
         maxDiffSize: z.number().default(100000),
         retentionDays: z.number().min(0).default(90),
+        autoPostComment: z.boolean().default(false),
+        autoPostSkipClean: z.boolean().default(true),
     }),
 }).refine(
     (cfg) => cfg.github.repos.length > 0 || cfg.azureDevOps.repos.length > 0,
@@ -85,6 +87,8 @@ export function loadConfig(): AppConfig {
             maxFilesChanged: Number(process.env.MAX_FILES_CHANGED) || 50,
             maxDiffSize: Number(process.env.MAX_DIFF_SIZE) || 100000,
             retentionDays: Number(process.env.REVIEW_RETENTION_DAYS ?? 90),
+            autoPostComment: process.env.AUTO_POST_COMMENT === 'true',
+            autoPostSkipClean: process.env.AUTO_POST_SKIP_CLEAN !== 'false',
         },
     });
 }

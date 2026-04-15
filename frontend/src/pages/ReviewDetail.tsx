@@ -1,17 +1,39 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, GitCommit, GitBranch, User, Clock, FileCode } from 'lucide-react';
+import { ArrowLeft, GitCommit, GitBranch, User, Clock, FileCode, Download, MessageSquarePlus } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useReview } from '../hooks/useReviews';
+import { reviewsApi } from '../api/client';
 import { SeverityBadge } from '../components/SeverityBadge';
 import { PrStateBadge } from '../components/PrStateBadge';
 import { ReviewBody } from '../components/ReviewBody';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
+import { downloadReviewReport } from '../utils/reviewReport';
 
 export function ReviewDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: review, isLoading, error, refetch } = useReview(id ?? '');
+  const [posting, setPosting] = useState(false);
+  const [postResult, setPostResult] = useState<{ ok: boolean; message: string; url?: string | null } | null>(null);
+
+  const handlePostComment = async () => {
+    if (!review) return;
+    setPosting(true);
+    setPostResult(null);
+    try {
+      const res = await reviewsApi.postComment(review.id);
+      setPostResult({ ok: true, message: 'Comment posted to PR', url: res.data.data.comment_url });
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (err as Error).message
+        ?? 'Failed to post comment';
+      setPostResult({ ok: false, message: msg });
+    } finally {
+      setPosting(false);
+    }
+  };
 
   if (isLoading) {
     return <LoadingSpinner message="Loading review..." />;
@@ -90,6 +112,23 @@ export function ReviewDetail() {
           <div className="flex items-center gap-2">
             <PrStateBadge state={review.pr_state} className="text-sm px-3 py-1" />
             <SeverityBadge severity={review.severity} className="text-sm px-3 py-1" />
+            <button
+              onClick={() => downloadReviewReport(review)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
+              title="Download review report (Markdown)"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
+            <button
+              onClick={handlePostComment}
+              disabled={posting}
+              className="inline-flex items-center gap-1.5 rounded-md border border-transparent bg-indigo-600 px-3 py-1 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Post summary as a comment on the PR"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+              {posting ? 'Posting…' : 'Post to PR'}
+            </button>
           </div>
         </div>
 
@@ -97,6 +136,31 @@ export function ReviewDetail() {
           <p className="mt-3 text-sm text-gray-600 italic">
             &ldquo;{review.commit_message}&rdquo;
           </p>
+        )}
+
+        {postResult && (
+          <div
+            className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+              postResult.ok
+                ? 'border-green-200 bg-green-50 text-green-800'
+                : 'border-red-200 bg-red-50 text-red-800'
+            }`}
+          >
+            {postResult.message}
+            {postResult.ok && postResult.url && (
+              <>
+                {' '}
+                <a
+                  href={postResult.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline font-medium"
+                >
+                  View comment
+                </a>
+              </>
+            )}
+          </div>
         )}
       </div>
 

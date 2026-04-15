@@ -226,4 +226,10 @@ export interface GitProvider {
     getDefaultBranch(repoFullName: string): Promise<string>;
 
     getPRState(repoFullName: string, prNumber: number): Promise<PrState>;
+
+    postPrComment(
+        repoFullName: string,
+        prNumber: number,
+        body: string
+    ): Promise<{ url: string | null }>;
 }

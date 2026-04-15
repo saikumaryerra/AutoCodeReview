@@ -145,6 +145,22 @@ export class GitHubProvider implements GitProvider {
         return data.default_branch;
     }
 
+    async postPrComment(
+        repoFullName: string,
+        prNumber: number,
+        body: string
+    ): Promise<{ url: string | null }> {
+        const { owner, repo } = this.splitRepo(repoFullName);
+        const { data } = await this.octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body,
+        });
+        log.info('Posted PR comment', { repo: repoFullName, pr: prNumber, commentId: data.id });
+        return { url: data.html_url };
+    }
+
     async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {
         const { owner, repo } = this.splitRepo(repoFullName);
         const { data } = await this.octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });

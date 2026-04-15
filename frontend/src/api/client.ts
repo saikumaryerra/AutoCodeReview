@@ -35,6 +35,10 @@ export const reviewsApi = {
     api.get<ApiResponse<ReviewDetail>>(`/reviews/commit/${sha}`),
   trigger: (body: TriggerReviewBody) =>
     api.post<ApiResponse<{ message: string }>>('/reviews/trigger', body),
+  postComment: (id: string) =>
+    api.post<ApiResponse<{ posted: boolean; comment_url: string | null }>>(
+      `/reviews/${id}/post-comment`
+    ),
 };
 
 export const reposApi = {
