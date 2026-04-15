@@ -3,6 +3,8 @@ import type { IGitApi } from 'azure-devops-node-api/GitApi.js';
 import {
     PullRequestStatus,
     VersionControlChangeType,
+    CommentType,
+    CommentThreadStatus,
 } from 'azure-devops-node-api/interfaces/GitInterfaces.js';
 import type {
     GitProvider,
@@ -217,6 +219,35 @@ export class AzureDevOpsProvider implements GitProvider {
         const repository = await api.getRepository(repo, project);
         const defaultBranch = repository.defaultBranch ?? 'refs/heads/main';
         return defaultBranch.replace('refs/heads/', '');
+    }
+
+    async postPrComment(
+        repoFullName: string,
+        prNumber: number,
+        body: string
+    ): Promise<{ url: string | null }> {
+        const api = this.getApi();
+        const { project, repo } = this.splitRepo(repoFullName);
+
+        const thread = await api.createThread(
+            {
+                comments: [
+                    {
+                        parentCommentId: 0,
+                        content: body,
+                        commentType: CommentType.Text,
+                    },
+                ],
+                status: CommentThreadStatus.Active,
+            },
+            repo,
+            prNumber,
+            project
+        );
+
+        const url = `${this.orgUrl}/${project}/_git/${repo}/pullrequest/${prNumber}?discussionId=${thread.id}`;
+        log.info('Posted PR comment', { repo: repoFullName, pr: prNumber, threadId: thread.id });
+        return { url };
     }
 
     async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {

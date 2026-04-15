@@ -209,6 +209,38 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
         })
     );
 
+    // POST /:id/post-comment — Post the review as a summary comment on the PR
+    router.post(
+        '/:id/post-comment',
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+
+            const review = reviewsRepo.getById(id);
+            if (!review) {
+                throw new NotFoundError('Review', id);
+            }
+
+            const provider = await deps.providerFactory.getProvider(review.provider);
+            const { formatReviewComment } = await import('../../reviewer/comment-formatter.js');
+            const body = formatReviewComment(review);
+
+            logger.info('Posting review comment', {
+                reviewId: id,
+                repo: review.repo_full_name,
+                pr: review.pr_number,
+                provider: review.provider,
+            });
+
+            const { url } = await provider.postPrComment(
+                review.repo_full_name,
+                review.pr_number,
+                body
+            );
+
+            res.json({ data: { posted: true, comment_url: url } });
+        })
+    );
+
     // GET /:id — Get single review by UUID
     // Registered LAST among GET routes so it does not shadow /pr/..., /commit/...
     router.get(
