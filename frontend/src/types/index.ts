@@ -29,10 +29,12 @@ export interface ReviewListItem {
   branch_name: string;
   pr_state: PrState | null;
   pr_url: string | null;
+  summary: string;
   severity: Severity;
   findings_count: number;
   status: ReviewStatus;
   review_duration_ms: number | null;
+  claude_model: string | null;
   created_at: string;
 }
 
@@ -58,8 +60,9 @@ export interface ReviewDetail {
     deletions: number;
   };
   status: ReviewStatus;
+  error_message?: string | null;
   review_duration_ms: number | null;
-  claude_model: string;
+  claude_model: string | null;
   raw_output?: string;
   created_at: string;
 }
@@ -71,6 +74,8 @@ export interface PRReviewItem {
   severity: Severity;
   summary: string;
   findings_count: number;
+  status: ReviewStatus;
+  error_message?: string | null;
   created_at: string;
 }
 
@@ -108,6 +113,7 @@ export interface TriggerReviewBody {
   repo_full_name: string;
   pr_number: number;
   commit_sha: string;
+  force?: boolean;
 }
 
 export interface Repository {

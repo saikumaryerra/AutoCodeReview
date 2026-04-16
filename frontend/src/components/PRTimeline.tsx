@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { SeverityBadge } from './SeverityBadge';
+import { StatusBadge } from './StatusBadge';
 import type { PRReviewItem, Severity } from '../types';
 
 const dotColors: Record<Severity, string> = {
@@ -47,6 +48,9 @@ export function PRTimeline({ reviews }: PRTimelineProps) {
                     <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700">
                       {review.commit_sha.slice(0, 7)}
                     </code>
+                    {review.status !== 'completed' && (
+                      <StatusBadge status={review.status} />
+                    )}
                     <SeverityBadge severity={review.severity} />
                   </div>
                   <p className="mt-1.5 text-sm text-gray-800 truncate">

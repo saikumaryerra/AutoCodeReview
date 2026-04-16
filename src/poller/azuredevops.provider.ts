@@ -224,10 +224,37 @@ export class AzureDevOpsProvider implements GitProvider {
     async postPrComment(
         repoFullName: string,
         prNumber: number,
-        body: string
-    ): Promise<{ url: string | null }> {
+        body: string,
+        marker?: string,
+    ): Promise<{ url: string | null; action: 'created' | 'updated' }> {
         const api = this.getApi();
         const { project, repo } = this.splitRepo(repoFullName);
+
+        // If a marker is provided, look for an existing thread+comment to update
+        if (marker) {
+            const threads = await api.getThreads(repo, prNumber, project);
+            for (const thread of threads ?? []) {
+                const firstComment = thread.comments?.[0];
+                if (firstComment?.content && firstComment.content.startsWith(marker)) {
+                    const updated = await api.updateComment(
+                        { content: body, commentType: CommentType.Text },
+                        repo,
+                        prNumber,
+                        thread.id!,
+                        firstComment.id!,
+                        project,
+                    );
+                    const url = `${this.orgUrl}/${project}/_git/${repo}/pullrequest/${prNumber}?discussionId=${thread.id}`;
+                    log.info('Updated PR comment', {
+                        repo: repoFullName,
+                        pr: prNumber,
+                        threadId: thread.id,
+                        commentId: updated.id,
+                    });
+                    return { url, action: 'updated' };
+                }
+            }
+        }
 
         const thread = await api.createThread(
             {
@@ -247,7 +274,7 @@ export class AzureDevOpsProvider implements GitProvider {
 
         const url = `${this.orgUrl}/${project}/_git/${repo}/pullrequest/${prNumber}?discussionId=${thread.id}`;
         log.info('Posted PR comment', { repo: repoFullName, pr: prNumber, threadId: thread.id });
-        return { url };
+        return { url, action: 'created' };
     }
 
     async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {

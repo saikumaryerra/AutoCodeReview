@@ -34,9 +34,18 @@ export const reviewsApi = {
   getByCommit: (sha: string) =>
     api.get<ApiResponse<ReviewDetail>>(`/reviews/commit/${sha}`),
   trigger: (body: TriggerReviewBody) =>
-    api.post<ApiResponse<{ message: string }>>('/reviews/trigger', body),
+    api.post<ApiResponse<{
+      job_id: string;
+      message: string;
+      queue_position: number;
+      review_id: string | null;
+    }>>('/reviews/trigger', body),
   postComment: (id: string) =>
-    api.post<ApiResponse<{ posted: boolean; comment_url: string | null }>>(
+    api.post<ApiResponse<{
+      posted: boolean;
+      comment_url: string | null;
+      action?: 'created' | 'updated';
+    }>>(
       `/reviews/${id}/post-comment`
     ),
 };
