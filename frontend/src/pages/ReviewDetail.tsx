@@ -5,6 +5,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { useReview } from '../hooks/useReviews';
 import { reviewsApi } from '../api/client';
 import { SeverityBadge } from '../components/SeverityBadge';
+import { StatusBadge } from '../components/StatusBadge';
 import { PrStateBadge } from '../components/PrStateBadge';
 import { ReviewBody } from '../components/ReviewBody';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -111,6 +112,7 @@ export function ReviewDetail() {
           </div>
           <div className="flex items-center gap-2">
             <PrStateBadge state={review.pr_state} className="text-sm px-3 py-1" />
+            <StatusBadge status={review.status} className="text-sm px-3 py-1" />
             <SeverityBadge severity={review.severity} className="text-sm px-3 py-1" />
             <button
               onClick={() => downloadReviewReport(review)}
@@ -163,6 +165,24 @@ export function ReviewDetail() {
           </div>
         )}
       </div>
+
+      {/* Error Alert for Failed Reviews */}
+      {review.status === 'failed' && review.error_message && (
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 shadow-sm">
+          <p className="text-sm text-red-800">
+            <strong>Review Failed:</strong> {review.error_message}
+          </p>
+        </div>
+      )}
+
+      {/* Alert for Skipped Reviews */}
+      {review.status === 'skipped' && review.error_message && (
+        <div className="mt-6 rounded-lg border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
+          <p className="text-sm text-yellow-800">
+            <strong>Review Skipped:</strong> {review.error_message.replace(/^Skipped:\s*/i, '')}
+          </p>
+        </div>
+      )}
 
       {/* Summary */}
       {review.summary && (

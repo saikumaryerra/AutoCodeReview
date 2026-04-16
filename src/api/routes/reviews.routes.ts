@@ -31,6 +31,7 @@ const TriggerReviewBodySchema = z.object({
     repo_full_name: z.string().min(1).regex(/^[^/]+\/[^/]+$/, 'Must be in owner/repo format'),
     pr_number: z.number().int().positive(),
     commit_sha: z.string().min(7).max(40),
+    force: z.boolean().optional().default(false),
 });
 
 // ── Async handler wrapper ─────────────────────────────────────────
@@ -163,30 +164,53 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
         '/trigger',
         validate(TriggerReviewBodySchema),
         asyncHandler(async (req, res) => {
-            const { repo_full_name, pr_number, commit_sha } = req.body as z.infer<typeof TriggerReviewBodySchema>;
+            const { repo_full_name, pr_number, commit_sha, force } = req.body as z.infer<typeof TriggerReviewBodySchema>;
 
-            logger.info('Manual review trigger', { repo_full_name, pr_number, commit_sha });
+            logger.info('Manual review trigger', { repo_full_name, pr_number, commit_sha, force });
 
-            // Look up the repository to determine the provider
+            // Look up the repository to determine the provider and PR metadata
             const repoRow = db
                 .prepare('SELECT provider, default_branch FROM repositories WHERE full_name = ?')
                 .get(repo_full_name) as { provider: string; default_branch: string } | undefined;
 
             const provider: Provider = (repoRow?.provider as Provider) ?? 'github';
 
+            // Check for an existing review of this exact commit
+            const existing = reviewsRepo.getByPR(repo_full_name, pr_number)
+                .find(r => r.commit_sha === commit_sha);
+
+            if (existing) {
+                if (existing.status === 'in_progress') {
+                    throw new ValidationError('A review for this commit is already in progress');
+                }
+                if (existing.status !== 'pending' && !force) {
+                    throw new ValidationError(
+                        `A review for this commit already exists (status: ${existing.status}). Pass force=true to re-review.`
+                    );
+                }
+                if (force) {
+                    // Reset existing review to pending so the reviewer service will reprocess it
+                    reviewsRepo.updateStatus(existing.id, 'pending');
+                    logger.info('Existing review reset to pending for re-review', {
+                        reviewId: existing.id,
+                        previousStatus: existing.status,
+                    });
+                }
+            }
+
             const job: ReviewJob = {
                 id: uuid(),
                 repoFullName: repo_full_name,
                 provider,
                 prNumber: pr_number,
-                prTitle: 'Manual trigger',
-                prAuthor: 'unknown',
+                prTitle: existing?.pr_title ?? 'Manual trigger',
+                prAuthor: existing?.pr_author ?? 'unknown',
                 commitSha: commit_sha,
-                commitMessage: 'Manual trigger',
-                branchName: repoRow?.default_branch ?? 'main',
-                targetBranch: repoRow?.default_branch ?? 'main',
-                prState: 'open',
-                prUrl: '',
+                commitMessage: existing?.commit_message ?? 'Manual trigger',
+                branchName: existing?.branch_name ?? repoRow?.default_branch ?? 'main',
+                targetBranch: existing?.target_branch ?? repoRow?.default_branch ?? 'main',
+                prState: existing?.pr_state ?? 'open',
+                prUrl: existing?.pr_url ?? '',
                 enqueuedAt: new Date(),
             };
 
@@ -197,13 +221,16 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 repo: repo_full_name,
                 pr: pr_number,
                 commit: commit_sha,
+                force,
+                reusedReviewId: existing?.id,
             });
 
             res.status(202).json({
                 data: {
                     job_id: job.id,
-                    message: 'Review enqueued',
+                    message: existing ? 'Re-review enqueued' : 'Review enqueued',
                     queue_position: queue.size(),
+                    review_id: existing?.id ?? null,
                 },
             });
         })
@@ -224,6 +251,11 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
             const { formatReviewComment } = await import('../../reviewer/comment-formatter.js');
             const body = formatReviewComment(review);
 
+            // Stable marker matching the formatter's heading prefix. Used by the
+            // provider to detect and update an existing AutoCodeReview comment
+            // rather than creating duplicates on re-review.
+            const COMMENT_MARKER = '## 🤖 AutoCodeReview';
+
             logger.info('Posting review comment', {
                 reviewId: id,
                 repo: review.repo_full_name,
@@ -231,13 +263,14 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 provider: review.provider,
             });
 
-            const { url } = await provider.postPrComment(
+            const { url, action } = await provider.postPrComment(
                 review.repo_full_name,
                 review.pr_number,
-                body
+                body,
+                COMMENT_MARKER,
             );
 
-            res.json({ data: { posted: true, comment_url: url } });
+            res.json({ data: { posted: true, comment_url: url, action } });
         })
     );
 

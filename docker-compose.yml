@@ -23,10 +23,12 @@ services:
     volumes:
       # Persistent data: database, cloned repos, logs
       - pr-review-data:/app/data
-      # Claude CLI authentication — mounted read-only to /mnt, then copied
-      # to the home directory with correct permissions by the entrypoint.
-      - ~/.claude:/mnt/claude-auth:ro
-      - ~/.claude.json:/mnt/claude-config.json:ro
+      # Claude CLI authentication — mounted read-write so container can refresh
+      # OAuth tokens. The entrypoint symlinks these to the home directory with
+      # correct permissions. Token refreshes inside the container are visible to
+      # the host via the symlink.
+      - ~/.claude:/mnt/claude-auth
+      - ~/.claude.json:/mnt/claude-config.json
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:${API_PORT:-9998}/api/v1/status"]

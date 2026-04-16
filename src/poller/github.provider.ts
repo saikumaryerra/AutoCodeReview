@@ -148,9 +148,32 @@ export class GitHubProvider implements GitProvider {
     async postPrComment(
         repoFullName: string,
         prNumber: number,
-        body: string
-    ): Promise<{ url: string | null }> {
+        body: string,
+        marker?: string,
+    ): Promise<{ url: string | null; action: 'created' | 'updated' }> {
         const { owner, repo } = this.splitRepo(repoFullName);
+
+        // If a marker is provided, look for an existing comment to update
+        if (marker) {
+            const { data: comments } = await this.octokit.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: prNumber,
+                per_page: 100,
+            });
+            const existing = comments.find(c => (c.body ?? '').startsWith(marker));
+            if (existing) {
+                const { data } = await this.octokit.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: existing.id,
+                    body,
+                });
+                log.info('Updated PR comment', { repo: repoFullName, pr: prNumber, commentId: data.id });
+                return { url: data.html_url, action: 'updated' };
+            }
+        }
+
         const { data } = await this.octokit.rest.issues.createComment({
             owner,
             repo,
@@ -158,7 +181,7 @@ export class GitHubProvider implements GitProvider {
             body,
         });
         log.info('Posted PR comment', { repo: repoFullName, pr: prNumber, commentId: data.id });
-        return { url: data.html_url };
+        return { url: data.html_url, action: 'created' };
     }
 
     async getPRState(repoFullName: string, prNumber: number): Promise<import('../shared/types.js').PrState> {

@@ -212,7 +212,7 @@ export class ReviewerService {
                     maxFilesChanged,
                 });
                 this.reviewsRepo.updateStatus(reviewId, 'skipped',
-                    `Skipped: ${changedFiles.length} files changed exceeds limit of ${maxFilesChanged}`);
+                    `${changedFiles.length} files changed exceeds limit of ${maxFilesChanged}`);
                 this.insertSeenCommit(job);
                 return;
             }
@@ -224,7 +224,7 @@ export class ReviewerService {
                     maxDiffSize,
                 });
                 this.reviewsRepo.updateStatus(reviewId, 'skipped',
-                    `Skipped: diff size ${diff.length} exceeds limit of ${maxDiffSize}`);
+                    `Diff size ${diff.length} exceeds limit of ${maxDiffSize}`);
                 this.insertSeenCommit(job);
                 return;
             }
@@ -278,8 +278,13 @@ export class ReviewerService {
             });
 
             if (!cliResult.success) {
-                this.reviewsRepo.updateStatus(reviewId, 'failed',
-                    `Claude CLI exited with code ${cliResult.exitCode}: ${cliResult.stderr.substring(0, 500)}`);
+                // Prefer the parsed summary — Claude CLI puts errors in the JSON
+                // envelope (stdout), not stderr. The parser already extracts a
+                // useful reason (auth error, max turns, rate limit, etc.).
+                const stderrTrim = cliResult.stderr.trim();
+                const errorDetail = parsed.summary
+                    || (stderrTrim ? `Claude CLI: ${stderrTrim.substring(0, 500)}` : `Claude CLI exited with code ${cliResult.exitCode}`);
+                this.reviewsRepo.updateStatus(reviewId, 'failed', errorDetail);
             }
 
             // ── Step 13: Mark commit as seen ──────────────────────
@@ -343,8 +348,14 @@ export class ReviewerService {
 
         try {
             const body = formatReviewComment(review);
-            const { url } = await provider.postPrComment(job.repoFullName, job.prNumber, body);
-            logger.info('Auto-posted review comment', { ...logCtx, reviewId, commentUrl: url });
+            const COMMENT_MARKER = '## 🤖 AutoCodeReview';
+            const { url, action } = await provider.postPrComment(
+                job.repoFullName,
+                job.prNumber,
+                body,
+                COMMENT_MARKER,
+            );
+            logger.info('Auto-posted review comment', { ...logCtx, reviewId, commentUrl: url, action });
         } catch (err) {
             logger.error('Auto-post comment failed', {
                 ...logCtx,

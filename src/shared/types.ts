@@ -230,6 +230,7 @@ export interface GitProvider {
     postPrComment(
         repoFullName: string,
         prNumber: number,
-        body: string
-    ): Promise<{ url: string | null }>;
+        body: string,
+        marker?: string,
+    ): Promise<{ url: string | null; action: 'created' | 'updated' }>;
 }

@@ -68,7 +68,7 @@ describe('parseClaudeOutput', () => {
 
     it('returns fallback for completely invalid output', () => {
         const result = parseClaudeOutput('this is not json at all');
-        expect(result.summary).toContain('Failed to parse');
+        expect(result.summary).toContain('Review failed');
         expect(result.severity).toBe('warning');
         expect(result.findings).toEqual([]);
     });

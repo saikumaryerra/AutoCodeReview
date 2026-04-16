@@ -94,7 +94,7 @@ function extractJsonFromText(text: string): string {
 function createFallback(reason: string, model: string | null): ParsedReview {
     logger.warn('Falling back to default review output', { reason });
     return {
-        summary: 'Failed to parse review output',
+        summary: `Review failed: ${reason}`,
         severity: 'warning',
         findings: [],
         model,
@@ -119,6 +119,61 @@ export function parseClaudeOutput(rawOutput: string): ParsedReview {
     // Step 2: Extract model from the envelope if available
     if (typeof envelope.model === 'string') {
         model = envelope.model;
+    }
+
+    // Step 2.5: Check for explicit error in the envelope (is_error: true)
+    if (envelope.is_error === true && typeof envelope.result === 'string') {
+        const errorMessage = envelope.result as string;
+
+        // Check for authentication-related errors
+        if (
+            errorMessage.includes('401') ||
+            errorMessage.includes('Failed to authenticate') ||
+            errorMessage.includes('Invalid authentication credentials') ||
+            errorMessage.includes('Authentication error')
+        ) {
+            logger.error('Claude CLI authentication failed', {
+                errorMessage: errorMessage.substring(0, 200),
+                envelopeSubtype: envelope.subtype,
+            });
+            return {
+                summary: 'Review failed: Authentication error. Please check Claude CLI credentials.',
+                severity: 'critical',
+                findings: [],
+                model,
+            };
+        }
+
+        // Check for rate limit / quota errors
+        if (
+            errorMessage.includes('429') ||
+            errorMessage.includes('rate limit') ||
+            errorMessage.includes('quota')
+        ) {
+            logger.error('Claude API rate limit or quota exceeded', {
+                errorMessage: errorMessage.substring(0, 200),
+            });
+            return createFallback('Claude API rate limit exceeded — retrying later', model);
+        }
+
+        // Check for timeout or connection errors
+        if (
+            errorMessage.includes('timeout') ||
+            errorMessage.includes('connection') ||
+            errorMessage.includes('ECONNREFUSED')
+        ) {
+            logger.error('Claude CLI connection error', {
+                errorMessage: errorMessage.substring(0, 200),
+            });
+            return createFallback('Connection error to Claude API — retrying later', model);
+        }
+
+        // Generic error in envelope
+        logger.error('Claude CLI returned error', {
+            errorMessage: errorMessage.substring(0, 200),
+            envelopeSubtype: envelope.subtype,
+        });
+        return createFallback(`Claude CLI error: ${errorMessage.substring(0, 100)}`, model);
     }
 
     // Step 3: Extract the `result` field from the Claude CLI envelope

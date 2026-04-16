@@ -87,7 +87,7 @@ export class ClaudeCliExecutor {
         const args: string[] = [
             '--print',
             '--output-format', 'json',
-            '--max-turns', '8',
+            '--max-turns', '50',
             '--allowedTools', 'Read,Glob,Grep',
         ];
 
