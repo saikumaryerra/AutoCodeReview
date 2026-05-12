@@ -16,8 +16,8 @@ services:
 
     ports:
       # Express API
-      - "${API_PORT:-3001}:3001"
-      # Vite dev server
+      - "${API_PORT:-3001}:${API_PORT:-3001}"
+      # Vite dev server (Vite always listens on 5173 inside the container)
       - "${FRONTEND_PORT:-5173}:5173"
 
     env_file:
@@ -35,8 +35,10 @@ services:
       # Persistent dev data (DB + cloned repos)
       - pr-review-dev-data:/app/data
 
-      # Claude CLI auth from host
-      - ~/.claude:/home/prreview/.claude:ro
+      # Claude CLI auth from host. Container runs as UID 1000 (node user)
+      # to match the host user owning these files.
+      - ~/.claude:/home/node/.claude
+      - ~/.claude.json:/home/node/.claude.json
 
     logging:
       driver: json-file
