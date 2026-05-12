@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3';
 import { createModuleLogger } from '../shared/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { createReviewsRouter } from './routes/reviews.routes.js';
+import { createPRsRouter } from './routes/prs.routes.js';
 import { createReposRouter } from './routes/repos.routes.js';
 import { createSettingsRouter } from './routes/settings.routes.js';
 import { createCleanupRouter } from './routes/cleanup.routes.js';
@@ -102,6 +103,11 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
             configService,
             db,
         } as any)
+    );
+
+    app.use(
+        '/api/v1/prs',
+        createPRsRouter({ reviewsRepo })
     );
 
     app.use(

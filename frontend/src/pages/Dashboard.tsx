@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Activity, Clock, AlertTriangle, Timer, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useReviews } from '../hooks/useReviews';
+import { usePRs } from '../hooks/usePRs';
 import { useStatus } from '../hooks/useStatus';
-import { ReviewCard } from '../components/ReviewCard';
+import { PRCard } from '../components/PRCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
-import type { Severity, PrState, ReviewListParams } from '../types';
+import type { Severity, PrState, PRListParams } from '../types';
 
 const severityColors: Record<Severity, string> = {
   critical: 'bg-red-500',
@@ -33,10 +33,10 @@ export function Dashboard() {
   const [page, setPage] = useState(1);
   const [severityFilter, setSeverityFilter] = useState<Severity | ''>('');
   const [prStateFilter, setPrStateFilter] = useState<PrState | ''>('');
-  const [sortBy, setSortBy] = useState<'created_at' | 'pr_number'>('created_at');
+  const [sortBy, setSortBy] = useState<'latest_review_at' | 'pr_number' | 'severity'>('latest_review_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const params: ReviewListParams = {
+  const params: PRListParams = {
     page,
     limit: PAGE_SIZE,
     ...(severityFilter && { severity: severityFilter }),
@@ -45,10 +45,10 @@ export function Dashboard() {
     order: sortOrder,
   };
 
-  const { data: reviewsData, isLoading: reviewsLoading, error: reviewsError, refetch: refetchReviews } = useReviews(params);
+  const { data: prsData, isLoading: prsLoading, error: prsError, refetch: refetchPRs } = usePRs(params);
 
-  const reviews = reviewsData?.data ?? [];
-  const pagination = reviewsData?.pagination;
+  const prs = prsData?.data ?? [];
+  const pagination = prsData?.pagination;
   const totalPages = pagination?.total_pages ?? 1;
 
   // Reset to page 1 when filters change
@@ -61,7 +61,7 @@ export function Dashboard() {
     setPage(1);
   };
   const handleSortChange = (v: string) => {
-    setSortBy(v as 'created_at' | 'pr_number');
+    setSortBy(v as 'latest_review_at' | 'pr_number' | 'severity');
     setPage(1);
   };
   const handleOrderChange = (v: string) => {
@@ -69,6 +69,8 @@ export function Dashboard() {
     setPage(1);
   };
 
+  // Breakdown is computed over the visible page's latest-review severities.
+  // It's a snapshot of what's currently on screen, consistent with prior behavior.
   const severityBreakdown = useMemo(() => {
     const counts: Record<Severity, number> = {
       critical: 0,
@@ -77,23 +79,23 @@ export function Dashboard() {
       clean: 0,
       praise: 0,
     };
-    for (const r of reviews) {
-      if (counts[r.severity] !== undefined) {
-        counts[r.severity]++;
+    for (const p of prs) {
+      if (counts[p.latest_severity] !== undefined) {
+        counts[p.latest_severity]++;
       }
     }
     return counts;
-  }, [reviews]);
+  }, [prs]);
 
   const totalBreakdown = Object.values(severityBreakdown).reduce((a, b) => a + b, 0);
 
   const avgReviewTime = useMemo(() => {
-    const durations = reviews
-      .filter((r) => r.review_duration_ms != null)
-      .map((r) => r.review_duration_ms as number);
+    const durations = prs
+      .filter((p) => p.latest_review_duration_ms != null)
+      .map((p) => p.latest_review_duration_ms as number);
     if (durations.length === 0) return null;
     return durations.reduce((a, b) => a + b, 0) / durations.length;
-  }, [reviews]);
+  }, [prs]);
 
   return (
     <div>
@@ -138,15 +140,16 @@ export function Dashboard() {
         {/* Recent Reviews */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Reviews</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Recent PRs</h3>
             <div className="flex items-center gap-2">
               <select
                 value={sortBy}
                 onChange={(e) => handleSortChange(e.target.value)}
                 className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
-                <option value="created_at">Sort by Date</option>
+                <option value="latest_review_at">Sort by Latest Review</option>
                 <option value="pr_number">Sort by PR #</option>
+                <option value="severity">Sort by Severity</option>
               </select>
               <select
                 value={sortOrder}
@@ -180,27 +183,27 @@ export function Dashboard() {
             </div>
           </div>
 
-          {reviewsLoading ? (
-            <LoadingSpinner message="Loading reviews..." />
-          ) : reviewsError ? (
+          {prsLoading ? (
+            <LoadingSpinner message="Loading PRs..." />
+          ) : prsError ? (
             <ErrorAlert
-              message="Failed to load recent reviews."
-              onRetry={() => refetchReviews()}
+              message="Failed to load recent PRs."
+              onRetry={() => refetchPRs()}
             />
-          ) : reviews.length === 0 ? (
+          ) : prs.length === 0 ? (
             <EmptyState
-              title="No reviews found"
+              title="No PRs found"
               description={
                 severityFilter || prStateFilter
-                  ? 'No reviews match the current filters.'
-                  : 'Reviews will appear here once pull requests are processed.'
+                  ? 'No PRs match the current filters.'
+                  : 'PRs will appear here once pull requests are processed.'
               }
             />
           ) : (
             <>
               <div className="space-y-3">
-                {reviews.map((review) => (
-                  <ReviewCard key={review.id} review={review} />
+                {prs.map((pr) => (
+                  <PRCard key={`${pr.repo_full_name}#${pr.pr_number}`} pr={pr} />
                 ))}
               </div>
 
