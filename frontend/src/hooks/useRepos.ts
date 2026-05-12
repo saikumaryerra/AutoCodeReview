@@ -42,3 +42,37 @@ export function useDeleteRepo() {
     },
   });
 }
+
+export function useRepoStandards(id: string) {
+  return useQuery({
+    queryKey: ['repos', id, 'coding-standards'],
+    queryFn: async () => {
+      const res = await reposApi.getStandards(id);
+      return res.data.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useUpdateRepoStandards() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, coding_standards }: { id: string; coding_standards: string }) =>
+      reposApi.updateStandards(id, coding_standards),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['repos', variables.id, 'coding-standards'] });
+      queryClient.invalidateQueries({ queryKey: ['repos'] });
+    },
+  });
+}
+
+export function useRegenerateRepoStandards() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reposApi.regenerateStandards(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['repos', id, 'coding-standards'] });
+      queryClient.invalidateQueries({ queryKey: ['repos'] });
+    },
+  });
+}

@@ -22,6 +22,7 @@ const ConfigSchema = z.object({
     claude: z.object({
         cliPath: z.string().default('claude'),
         reviewTimeoutSeconds: z.number().min(60).default(300),
+        standardsTimeoutSeconds: z.number().min(60).default(1200),
         model: z.string().optional(),
     }),
     server: z.object({
@@ -71,6 +72,7 @@ export function loadConfig(): AppConfig {
         claude: {
             cliPath: process.env.CLAUDE_CLI_PATH || 'claude',
             reviewTimeoutSeconds: Number(process.env.CLAUDE_REVIEW_TIMEOUT_SECONDS) || 300,
+            standardsTimeoutSeconds: Number(process.env.CLAUDE_STANDARDS_TIMEOUT_SECONDS) || 1200,
             model: process.env.CLAUDE_MODEL || undefined,
         },
         server: {

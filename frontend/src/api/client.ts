@@ -57,6 +57,12 @@ export const reposApi = {
   update: (id: string, body: UpdateRepoBody) =>
     api.patch<ApiResponse<Repository>>(`/repos/${id}`, body),
   remove: (id: string) => api.delete(`/repos/${id}`),
+  getStandards: (id: string) =>
+    api.get<ApiResponse<{ repo_full_name: string; coding_standards: string | null }>>(`/repos/${id}/coding-standards`),
+  updateStandards: (id: string, coding_standards: string) =>
+    api.put<ApiResponse<{ repo_full_name: string; coding_standards: string }>>(`/repos/${id}/coding-standards`, { coding_standards }),
+  regenerateStandards: (id: string) =>
+    api.post<ApiResponse<{ repo_full_name: string; coding_standards: string }>>(`/repos/${id}/coding-standards/regenerate`),
 };
 
 export const settingsApi = {
