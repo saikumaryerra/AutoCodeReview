@@ -45,15 +45,38 @@ export interface Review {
     created_at: string;
 }
 
+// ── PR-grouped listing (dashboard) ──────────────────────
+
+export interface PRListItem {
+    repo_full_name: string;
+    provider: Provider;
+    pr_number: number;
+    pr_title: string;
+    pr_author: string;
+    branch_name: string;
+    pr_state: PrState | null;
+    pr_url: string | null;
+    latest_review_id: string;
+    latest_commit_sha: string;
+    latest_severity: Severity;
+    latest_status: ReviewStatus;
+    latest_findings_count: number;
+    latest_review_duration_ms: number | null;
+    latest_review_at: string;
+    review_count: number;
+}
+
 export interface Repository {
     id: string;
     full_name: string;
     provider: Provider;
     org_url: string | null;
+    token: string | null;
     default_branch: string;
     added_at: string;
     last_polled_at: string | null;
     is_active: boolean;
+    coding_standards: string | null;
 }
 
 export interface ReviewJob {
@@ -70,6 +93,8 @@ export interface ReviewJob {
     prState: PrState;
     prUrl: string;
     enqueuedAt: Date;
+    orgUrl?: string;
+    token?: string;
 }
 
 // ── Provider Types ────────────────────────────────────────

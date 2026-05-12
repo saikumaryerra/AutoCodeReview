@@ -12,23 +12,36 @@ const log = createModuleLogger('provider-factory');
  * Each provider is instantiated once and reused for all subsequent calls.
  * For Azure DevOps, the async initialize() step is handled transparently.
  */
+export interface ProviderResolveOpts {
+    /** Per-repo Azure DevOps org URL. Falls back to env when omitted. */
+    orgUrl?: string;
+    /** Per-repo Azure DevOps PAT. Falls back to env when omitted. */
+    token?: string;
+}
+
 export class ProviderFactory {
     private githubProvider: GitHubProvider | null = null;
-    private azureDevOpsProvider: AzureDevOpsProvider | null = null;
+    // Azure DevOps providers are cached per (orgUrl, token) pair so that
+    // repos belonging to different orgs each get their own initialised
+    // client.
+    private azureDevOpsProviders = new Map<string, AzureDevOpsProvider>();
 
     constructor(private config: AppConfig) {}
 
     /**
      * Returns the appropriate GitProvider for the given provider name.
-     * Creates and caches the instance on first call.
-     * Throws if the requested provider is not configured.
+     * For Azure DevOps, opts.orgUrl / opts.token override env defaults so
+     * different repos can target different orgs.
      */
-    async getProvider(providerName: Provider): Promise<GitProvider> {
+    async getProvider(
+        providerName: Provider,
+        opts: ProviderResolveOpts = {},
+    ): Promise<GitProvider> {
         switch (providerName) {
             case 'github':
                 return this.getGitHubProvider();
             case 'azure_devops':
-                return await this.getAzureDevOpsProvider();
+                return await this.getAzureDevOpsProvider(opts);
             default:
                 throw new Error(`Unknown provider: ${providerName}`);
         }
@@ -75,22 +88,28 @@ export class ProviderFactory {
         return this.githubProvider;
     }
 
-    private async getAzureDevOpsProvider(): Promise<AzureDevOpsProvider> {
-        if (this.azureDevOpsProvider) {
-            return this.azureDevOpsProvider;
+    private async getAzureDevOpsProvider(
+        opts: ProviderResolveOpts,
+    ): Promise<AzureDevOpsProvider> {
+        const orgUrl = opts.orgUrl ?? this.config.azureDevOps.orgUrl;
+        const token = opts.token ?? this.config.azureDevOps.token;
+
+        if (!orgUrl || !token) {
+            throw new Error(
+                'Azure DevOps provider requested but no orgUrl/token available. ' +
+                'Provide them per-repo or via AZURE_DEVOPS_ORG_URL / AZURE_DEVOPS_TOKEN env vars.',
+            );
         }
 
-        const token = this.config.azureDevOps.token;
-        const orgUrl = this.config.azureDevOps.orgUrl;
-        if (!token || !orgUrl) {
-            throw new Error(
-                'Azure DevOps provider requested but AZURE_DEVOPS_TOKEN or AZURE_DEVOPS_ORG_URL is not configured.'
-            );
+        const cacheKey = `${orgUrl}|${token}`;
+        const cached = this.azureDevOpsProviders.get(cacheKey);
+        if (cached) {
+            return cached;
         }
 
         const provider = new AzureDevOpsProvider(orgUrl, token);
         await provider.initialize();
-        this.azureDevOpsProvider = provider;
+        this.azureDevOpsProviders.set(cacheKey, provider);
         log.info('Azure DevOps provider created', { orgUrl });
         return provider;
     }

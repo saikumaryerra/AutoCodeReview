@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS repositories (
     provider        TEXT NOT NULL
                     CHECK(provider IN ('github', 'azure_devops')),
     org_url         TEXT,
+    token           TEXT,
     default_branch  TEXT NOT NULL DEFAULT 'main',
     added_at        TEXT NOT NULL DEFAULT (datetime('now')),
     last_polled_at  TEXT,
-    is_active       INTEGER NOT NULL DEFAULT 1
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    coding_standards TEXT
 );
 
 -- ── Reviews ──────────────────────────────────────────────────────

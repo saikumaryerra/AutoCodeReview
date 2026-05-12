@@ -12,10 +12,12 @@ interface RepoRow {
     full_name: string;
     provider: string;
     org_url: string | null;
+    token: string | null;
     default_branch: string;
     added_at: string;
     last_polled_at: string | null;
     is_active: number;
+    coding_standards: string | null;
 }
 
 /** Extended row returned by listAll (includes joined review_count). */
@@ -35,6 +37,8 @@ function parseRepoRow(row: RepoRow): Repository {
         ...row,
         provider: row.provider as Provider,
         is_active: row.is_active === 1,
+        coding_standards: row.coding_standards ?? null,
+        token: row.token ?? null,
     };
 }
 
@@ -56,10 +60,10 @@ export class ReposRepository {
     insert(repo: Repository): void {
         const stmt = this.db.prepare(`
             INSERT INTO repositories (
-                id, full_name, provider, org_url, default_branch,
+                id, full_name, provider, org_url, token, default_branch,
                 added_at, last_polled_at, is_active
             ) VALUES (
-                @id, @full_name, @provider, @org_url, @default_branch,
+                @id, @full_name, @provider, @org_url, @token, @default_branch,
                 @added_at, @last_polled_at, @is_active
             )
         `);
@@ -69,6 +73,7 @@ export class ReposRepository {
             full_name: repo.full_name,
             provider: repo.provider,
             org_url: repo.org_url,
+            token: repo.token ?? null,
             default_branch: repo.default_branch,
             added_at: repo.added_at,
             last_polled_at: repo.last_polled_at,
@@ -136,7 +141,7 @@ export class ReposRepository {
      */
     update(
         id: string,
-        data: Partial<Pick<Repository, 'is_active' | 'default_branch' | 'last_polled_at'>>
+        data: Partial<Pick<Repository, 'is_active' | 'default_branch' | 'last_polled_at' | 'coding_standards'>>
     ): void {
         const sets: string[] = [];
         const params: Record<string, unknown> = { id };
@@ -152,6 +157,10 @@ export class ReposRepository {
         if (data.last_polled_at !== undefined) {
             sets.push('last_polled_at = @last_polled_at');
             params.last_polled_at = data.last_polled_at;
+        }
+        if (data.coding_standards !== undefined) {
+            sets.push('coding_standards = @coding_standards');
+            params.coding_standards = data.coding_standards;
         }
 
         if (sets.length === 0) {
@@ -173,5 +182,26 @@ export class ReposRepository {
     delete(id: string): void {
         this.db.prepare('DELETE FROM repositories WHERE id = ?').run(id);
         log.debug('Repository deleted', { id });
+    }
+
+    /**
+     * Get coding standards for a repository by its full_name.
+     * Returns null if no standards have been generated yet.
+     */
+    getCodingStandards(fullName: string): string | null {
+        const row = this.db
+            .prepare('SELECT coding_standards FROM repositories WHERE full_name = ?')
+            .get(fullName) as { coding_standards: string | null } | undefined;
+        return row?.coding_standards ?? null;
+    }
+
+    /**
+     * Update coding standards for a repository by its full_name.
+     */
+    updateCodingStandards(fullName: string, standards: string): void {
+        this.db
+            .prepare('UPDATE repositories SET coding_standards = ? WHERE full_name = ?')
+            .run(standards, fullName);
+        log.debug('Coding standards updated', { fullName, length: standards.length });
     }
 }

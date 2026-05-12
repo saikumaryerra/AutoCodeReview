@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import {
   Save,
   RotateCcw,
@@ -13,11 +13,15 @@ import {
   ChevronRight,
   Github,
   Server,
+  FileText,
+  Pencil,
+  X,
+  RotateCw,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useStatus } from '../hooks/useStatus';
 import { useSettings, useUpdateSettings, useResetSetting } from '../hooks/useSettings';
-import { useRepos, useAddRepo, useUpdateRepo, useDeleteRepo } from '../hooks/useRepos';
+import { useRepos, useAddRepo, useUpdateRepo, useDeleteRepo, useRepoStandards, useUpdateRepoStandards, useRegenerateRepoStandards } from '../hooks/useRepos';
 import { pollerApi, cleanupApi } from '../api/client';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -285,6 +289,169 @@ function SettingField({ setting, editValue, onChange, onReset }: SettingFieldPro
   );
 }
 
+// --- Coding Standards Panel ---
+
+function CodingStandardsPanel({ repoId, onClose }: { repoId: string; onClose: () => void }) {
+  const { data, isLoading } = useRepoStandards(repoId);
+  const updateStandards = useUpdateRepoStandards();
+  const regenerateStandards = useRegenerateRepoStandards();
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
+
+  const standards = data?.coding_standards ?? null;
+
+  const handleEdit = () => {
+    setDraft(standards ?? '');
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!draft.trim()) return;
+    try {
+      await updateStandards.mutateAsync({ id: repoId, coding_standards: draft });
+      setEditing(false);
+      setToast({ type: 'success', message: 'Coding standards saved.' });
+    } catch {
+      setToast({ type: 'error', message: 'Failed to save standards.' });
+    }
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const handleRegenerate = async () => {
+    setConfirmRegenerate(false);
+    try {
+      await regenerateStandards.mutateAsync(repoId);
+      setEditing(false);
+      setToast({ type: 'success', message: 'Coding standards regenerated from codebase.' });
+    } catch {
+      setToast({ type: 'error', message: 'Failed to regenerate standards. Check that the repo is cloned.' });
+    }
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  return (
+    <tr>
+      <td colSpan={6} className="p-0">
+        <div className="border-t border-indigo-100 bg-indigo-50/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-gray-800">Coding Standards</h4>
+            <div className="flex items-center gap-2">
+              {!editing && standards && (
+                <button
+                  onClick={handleEdit}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+              )}
+              {!confirmRegenerate ? (
+                <button
+                  onClick={() => setConfirmRegenerate(true)}
+                  disabled={regenerateStandards.isPending}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {regenerateStandards.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RotateCw className="h-3 w-3" />
+                  )}
+                  {regenerateStandards.isPending ? 'Regenerating...' : 'Regenerate'}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1">
+                  <span className="text-xs text-amber-700">This will overwrite current standards.</span>
+                  <button
+                    onClick={handleRegenerate}
+                    className="text-xs font-medium text-amber-700 hover:text-amber-900"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => setConfirmRegenerate(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {toast && (
+            <div
+              className={`rounded-md p-2.5 text-xs mb-3 ${
+                toast.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              }`}
+            >
+              {toast.message}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="py-4">
+              <LoadingSpinner size="sm" message="Loading standards..." />
+            </div>
+          ) : editing ? (
+            <div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={20}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-mono focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="# Coding Standards&#10;&#10;Write your project's coding conventions here..."
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={updateStandards.isPending || !draft.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {updateStandards.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3" />
+                  )}
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : standards ? (
+            <pre className="max-h-96 overflow-auto rounded-md border border-gray-200 bg-white p-4 text-xs text-gray-700 font-mono whitespace-pre-wrap">
+              {standards}
+            </pre>
+          ) : (
+            <div className="rounded-md border border-dashed border-gray-300 bg-white p-6 text-center">
+              <FileText className="mx-auto h-8 w-8 text-gray-300" />
+              <p className="mt-2 text-sm text-gray-500">
+                No coding standards generated yet.
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                Standards will be auto-generated on the next review, or you can click "Regenerate" above.
+              </p>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // --- Tracked Repositories Section ---
 
 function ReposSection() {
@@ -297,7 +464,10 @@ function ReposSection() {
   const [newRepoName, setNewRepoName] = useState('');
   const [newRepoProvider, setNewRepoProvider] = useState<Provider>('github');
   const [newRepoBranch, setNewRepoBranch] = useState('main');
+  const [newRepoOrgUrl, setNewRepoOrgUrl] = useState('');
+  const [newRepoToken, setNewRepoToken] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [expandedStandardsId, setExpandedStandardsId] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,9 +477,17 @@ function ReposSection() {
         full_name: newRepoName.trim(),
         provider: newRepoProvider,
         default_branch: newRepoBranch.trim() || 'main',
+        org_url: newRepoProvider === 'azure_devops' && newRepoOrgUrl.trim()
+          ? newRepoOrgUrl.trim()
+          : undefined,
+        token: newRepoProvider === 'azure_devops' && newRepoToken
+          ? newRepoToken
+          : undefined,
       });
       setNewRepoName('');
       setNewRepoBranch('main');
+      setNewRepoOrgUrl('');
+      setNewRepoToken('');
       setShowAddForm(false);
     } catch {
       // Error handled by React Query
@@ -378,6 +556,43 @@ function ReposSection() {
                 />
               </div>
             </div>
+
+            {newRepoProvider === 'azure_devops' && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Org URL <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newRepoOrgUrl}
+                    onChange={(e) => setNewRepoOrgUrl(e.target.value)}
+                    placeholder="https://dev.azure.com/your-org"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Leave empty to use the default org from .env.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Token (PAT) <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={newRepoToken}
+                    onChange={(e) => setNewRepoToken(e.target.value)}
+                    placeholder="Personal Access Token"
+                    autoComplete="new-password"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Required for repos outside the default org. Stored encrypted-at-rest is NOT yet enabled; use a least-privilege PAT.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="mt-3 flex gap-2">
               <button
                 type="submit"
@@ -413,12 +628,14 @@ function ReposSection() {
                   <th className="pb-2">Status</th>
                   <th className="pb-2">Last Polled</th>
                   <th className="pb-2">Reviews</th>
+                  <th className="pb-2">Standards</th>
                   <th className="pb-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {repos.map((repo) => (
-                  <tr key={repo.id} className="hover:bg-gray-50">
+                  <Fragment key={repo.id}>
+                  <tr className="hover:bg-gray-50">
                     <td className="py-3 font-medium text-gray-900">{repo.full_name}</td>
                     <td className="py-3">
                       <span className="inline-flex items-center gap-1 text-gray-600">
@@ -452,6 +669,24 @@ function ReposSection() {
                     </td>
                     <td className="py-3 text-gray-600">{repo.review_count}</td>
                     <td className="py-3">
+                      <button
+                        onClick={() =>
+                          setExpandedStandardsId(
+                            expandedStandardsId === repo.id ? null : repo.id
+                          )
+                        }
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+                          repo.coding_standards
+                            ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                        title={repo.coding_standards ? 'View/edit coding standards' : 'No standards yet'}
+                      >
+                        <FileText className="h-3 w-3" />
+                        {repo.coding_standards ? 'View' : 'None'}
+                      </button>
+                    </td>
+                    <td className="py-3">
                       {confirmDeleteId === repo.id ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-red-600">Delete?</span>
@@ -479,6 +714,13 @@ function ReposSection() {
                       )}
                     </td>
                   </tr>
+                  {expandedStandardsId === repo.id && (
+                    <CodingStandardsPanel
+                      repoId={repo.id}
+                      onClose={() => setExpandedStandardsId(null)}
+                    />
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
