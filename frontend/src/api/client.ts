@@ -7,6 +7,8 @@ import type {
   ReviewListItem,
   ReviewDetail,
   PRDetailData,
+  PRListItem,
+  PRListParams,
   Repository,
   SettingItem,
   SettingsUpdateResult,
@@ -48,6 +50,11 @@ export const reviewsApi = {
     }>>(
       `/reviews/${id}/post-comment`
     ),
+};
+
+export const prsApi = {
+  list: (params: PRListParams) =>
+    api.get<PaginatedResponse<PRListItem>>('/prs', { params }),
 };
 
 export const reposApi = {

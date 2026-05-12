@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { Review, ReviewStatus, Severity, Provider, PrState } from '../shared/types.js';
+import type { Review, ReviewStatus, Severity, Provider, PrState, PRListItem } from '../shared/types.js';
 import { createModuleLogger } from '../shared/logger.js';
 
 const log = createModuleLogger('reviews-repo');
@@ -56,6 +56,17 @@ export interface ReviewListFilters {
     page?: number;
     limit?: number;
     sort?: 'created_at' | 'severity' | 'pr_number';
+    order?: 'asc' | 'desc';
+}
+
+export interface PRListFilters {
+    repo?: string;
+    provider?: Provider;
+    severity?: Severity;
+    pr_state?: PrState;
+    page?: number;
+    limit?: number;
+    sort?: 'latest_review_at' | 'pr_number' | 'severity';
     order?: 'asc' | 'desc';
 }
 
@@ -337,6 +348,171 @@ export class ReviewsRepository {
 
         return {
             data: rows.map(parseListRow),
+            pagination: { page, limit, total, total_pages },
+        };
+    }
+
+    /**
+     * Paginated listing grouped by PR. One row per (repo_full_name, pr_number),
+     * carrying the latest review's metadata plus the total review count.
+     *
+     * Filters `severity` / `pr_state` apply to the **latest** review of each PR
+     * (the one surfaced on the card), matching user expectation that the card's
+     * visible severity is what gets filtered.
+     */
+    listGroupedByPR(filters: PRListFilters = {}): PaginatedResult<PRListItem> {
+        const page = Math.max(1, filters.page ?? 1);
+        const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
+        const sortKey = filters.sort ?? 'latest_review_at';
+        const order = filters.order === 'asc' ? 'ASC' : 'DESC';
+
+        // Map public sort keys to SQL expressions (whitelist guards injection).
+        const sortExpr: Record<string, string> = {
+            latest_review_at: 'latest_review_at',
+            pr_number: 'pr_number',
+            severity: `CASE latest.severity
+                WHEN 'critical' THEN 0
+                WHEN 'warning' THEN 1
+                WHEN 'info' THEN 2
+                WHEN 'clean' THEN 3
+                ELSE 4 END`,
+        };
+        const orderByCol = sortExpr[sortKey] ?? sortExpr.latest_review_at;
+
+        const preConditions: string[] = [];
+        const postConditions: string[] = [];
+        const params: Record<string, unknown> = {};
+
+        // Filters that can be applied before grouping (narrow row scan).
+        if (filters.repo) {
+            preConditions.push('repo_full_name = @repo');
+            params.repo = filters.repo;
+        }
+        if (filters.provider) {
+            preConditions.push('provider = @provider');
+            params.provider = filters.provider;
+        }
+
+        // Filters on the latest review's fields (post-join).
+        if (filters.severity) {
+            postConditions.push('latest.severity = @severity');
+            params.severity = filters.severity;
+        }
+        if (filters.pr_state) {
+            postConditions.push('latest.pr_state = @pr_state');
+            params.pr_state = filters.pr_state;
+        }
+
+        const preWhere = preConditions.length > 0 ? `WHERE ${preConditions.join(' AND ')}` : '';
+        const postWhere = postConditions.length > 0 ? `WHERE ${postConditions.join(' AND ')}` : '';
+
+        // CTE: pick the latest review per PR. Tie-break on id for determinism
+        // when multiple reviews share a created_at (unlikely but cheap insurance).
+        const baseCTE = `
+            WITH agg AS (
+                SELECT
+                    repo_full_name,
+                    pr_number,
+                    MAX(created_at) AS latest_review_at,
+                    COUNT(*) AS review_count
+                FROM reviews
+                ${preWhere}
+                GROUP BY repo_full_name, pr_number
+            ),
+            latest AS (
+                SELECT r.*, agg.latest_review_at, agg.review_count
+                FROM agg
+                JOIN reviews r
+                  ON r.repo_full_name = agg.repo_full_name
+                 AND r.pr_number = agg.pr_number
+                 AND r.created_at = agg.latest_review_at
+                -- Tie-break: if two reviews share created_at, prefer higher id
+                -- lexicographically (deterministic, cheap).
+                WHERE r.id = (
+                    SELECT r2.id FROM reviews r2
+                    WHERE r2.repo_full_name = agg.repo_full_name
+                      AND r2.pr_number = agg.pr_number
+                      AND r2.created_at = agg.latest_review_at
+                    ORDER BY r2.id DESC LIMIT 1
+                )
+            )
+        `;
+
+        const countSQL = `${baseCTE} SELECT COUNT(*) AS total FROM latest ${postWhere}`;
+        const { total } = this.db.prepare(countSQL).get(params) as { total: number };
+
+        const total_pages = Math.max(1, Math.ceil(total / limit));
+        const offset = (page - 1) * limit;
+
+        const dataSQL = `
+            ${baseCTE}
+            SELECT
+                repo_full_name,
+                provider,
+                pr_number,
+                pr_title,
+                pr_author,
+                branch_name,
+                pr_state,
+                pr_url,
+                id AS latest_review_id,
+                commit_sha AS latest_commit_sha,
+                severity AS latest_severity,
+                status AS latest_status,
+                json_array_length(findings) AS latest_findings_count,
+                review_duration_ms AS latest_review_duration_ms,
+                latest_review_at,
+                review_count
+            FROM latest
+            ${postWhere}
+            ORDER BY ${orderByCol} ${order}
+            LIMIT @limit OFFSET @offset
+        `;
+
+        interface PRGroupRow {
+            repo_full_name: string;
+            provider: string;
+            pr_number: number;
+            pr_title: string;
+            pr_author: string;
+            branch_name: string;
+            pr_state: string | null;
+            pr_url: string | null;
+            latest_review_id: string;
+            latest_commit_sha: string;
+            latest_severity: string;
+            latest_status: string;
+            latest_findings_count: number;
+            latest_review_duration_ms: number | null;
+            latest_review_at: string;
+            review_count: number;
+        }
+
+        const rows = this.db
+            .prepare(dataSQL)
+            .all({ ...params, limit, offset }) as PRGroupRow[];
+
+        const data: PRListItem[] = rows.map((r) => ({
+            repo_full_name: r.repo_full_name,
+            provider: r.provider as Provider,
+            pr_number: r.pr_number,
+            pr_title: r.pr_title,
+            pr_author: r.pr_author,
+            branch_name: r.branch_name,
+            pr_state: r.pr_state as PrState | null,
+            pr_url: r.pr_url,
+            latest_review_id: r.latest_review_id,
+            latest_commit_sha: r.latest_commit_sha,
+            latest_severity: r.latest_severity as Severity,
+            latest_status: r.latest_status as ReviewStatus,
+            latest_findings_count: r.latest_findings_count,
+            latest_review_duration_ms: r.latest_review_duration_ms,
+            latest_review_at: r.latest_review_at,
+            review_count: r.review_count,
+        }));
+
+        return {
+            data,
             pagination: { page, limit, total, total_pages },
         };
     }
