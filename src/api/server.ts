@@ -20,6 +20,7 @@ import type { ProviderFactory } from '../poller/provider.factory.js';
 import type { PollerService } from '../poller/poller.service.js';
 import type { ReviewerService } from '../reviewer/reviewer.service.js';
 import type { RepoManager } from '../reviewer/repo-manager.js';
+import type { CodingStandardsGenerator } from '../reviewer/coding-standards.generator.js';
 import type { ConfigService } from '../config/config.service.js';
 
 const logger = createModuleLogger('api');
@@ -37,6 +38,7 @@ export interface ApiServerDeps {
     reviewerService: ReviewerService;
     cleanupRepo: CleanupRepository;
     repoManager: RepoManager;
+    standardsGenerator: CodingStandardsGenerator;
 }
 
 // ── Server startup ───────────────────────────────────────────────
@@ -53,6 +55,7 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
         reviewerService,
         cleanupRepo,
         repoManager,
+        standardsGenerator,
     } = deps;
 
     const app = express();
@@ -106,6 +109,8 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
         createReposRouter({
             db,
             providerFactory: providerFactory as any,
+            repoManager,
+            standardsGenerator,
         })
     );
 
