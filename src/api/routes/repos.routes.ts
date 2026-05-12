@@ -5,17 +5,30 @@ import { validate } from '../middleware/validate.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { createModuleLogger } from '../../shared/logger.js';
 import type Database from 'better-sqlite3';
-import type { Provider, Repository } from '../../shared/types.js';
+import type { Provider } from '../../shared/types.js';
+import type { RepoManager } from '../../reviewer/repo-manager.js';
+import type { CodingStandardsGenerator } from '../../reviewer/coding-standards.generator.js';
 
 const logger = createModuleLogger('repos-routes');
 
 // ── Zod schemas ───────────────────────────────────────────────────
 
 const AddRepoBodySchema = z.object({
-    full_name: z.string().min(1).regex(/^[^/]+\/[^/]+$/, 'Must be in owner/repo format'),
+    full_name: z
+        .string()
+        .min(1)
+        .transform((s) => s.trim())
+        .refine((s) => /^[^/]+\/[^/]+$/.test(s), {
+            message: 'Must be in owner/repo format',
+        })
+        .refine(
+            (s) => s.split('/').every((seg) => seg.trim().length > 0),
+            { message: 'Repo path segments cannot be empty or whitespace' },
+        ),
     provider: z.enum(['github', 'azure_devops']).optional(),
     default_branch: z.string().min(1).default('main'),
     org_url: z.string().url().optional(),
+    token: z.string().min(1).optional(),
 });
 
 const UpdateRepoBodySchema = z.object({
@@ -43,10 +56,12 @@ interface RepoRow {
     full_name: string;
     provider: string;
     org_url: string | null;
+    token: string | null;
     default_branch: string;
     added_at: string;
     last_polled_at: string | null;
     is_active: number;
+    coding_standards: string | null;
 }
 
 interface RepoWithCountRow extends RepoRow {
@@ -55,9 +70,20 @@ interface RepoWithCountRow extends RepoRow {
 
 // ── Dependencies interface ────────────────────────────────────────
 
+const UpdateStandardsBodySchema = z.object({
+    coding_standards: z.string().min(1),
+});
+
 export interface ReposRouterDeps {
     db: Database.Database;
-    providerFactory: { getProvider(name: Provider): unknown };
+    providerFactory: {
+        getProvider(
+            name: Provider,
+            opts?: { orgUrl?: string; token?: string },
+        ): Promise<unknown>;
+    };
+    repoManager: RepoManager;
+    standardsGenerator: CodingStandardsGenerator;
 }
 
 // ── Router factory ────────────────────────────────────────────────
@@ -92,11 +118,13 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
                 full_name: row.full_name,
                 provider: row.provider,
                 org_url: row.org_url,
+                has_token: row.token != null && row.token.length > 0,
                 default_branch: row.default_branch,
                 added_at: row.added_at,
                 last_polled_at: row.last_polled_at,
                 is_active: Boolean(row.is_active),
                 review_count: row.review_count,
+                coding_standards: row.coding_standards ?? null,
             }));
 
             res.json({ data });
@@ -119,13 +147,14 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
             const now = new Date().toISOString();
 
             db.prepare(`
-                INSERT INTO repositories (id, full_name, provider, org_url, default_branch, added_at, is_active)
-                VALUES (@id, @full_name, @provider, @org_url, @default_branch, @added_at, 1)
+                INSERT INTO repositories (id, full_name, provider, org_url, token, default_branch, added_at, is_active)
+                VALUES (@id, @full_name, @provider, @org_url, @token, @default_branch, @added_at, 1)
             `).run({
                 id,
                 full_name: body.full_name,
                 provider,
                 org_url: body.org_url ?? null,
+                token: body.token ?? null,
                 default_branch: body.default_branch,
                 added_at: now,
             });
@@ -135,6 +164,7 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
                 full_name: body.full_name,
                 provider,
                 org_url: body.org_url ?? null,
+                has_token: !!body.token,
                 default_branch: body.default_branch,
                 added_at: now,
                 last_polled_at: null,
@@ -181,14 +211,16 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
 
             db.prepare(`UPDATE repositories SET ${setClauses.join(', ')} WHERE id = @id`).run(params);
 
-            // Return updated row
+            // Return updated row (token redacted; only has_token boolean is exposed)
             const updated = db
                 .prepare('SELECT * FROM repositories WHERE id = ?')
                 .get(id) as RepoRow;
 
+            const { token, ...rest } = updated;
             res.json({
                 data: {
-                    ...updated,
+                    ...rest,
+                    has_token: token != null && token.length > 0,
                     is_active: Boolean(updated.is_active),
                 },
             });
@@ -216,6 +248,123 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
             logger.info('Repository deleted', { id, full_name: existing.full_name });
 
             res.status(204).send();
+        })
+    );
+
+    // GET /:id/coding-standards — Get coding standards for a repo
+    router.get(
+        '/:id/coding-standards',
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+
+            const repo = db
+                .prepare('SELECT id, full_name, coding_standards FROM repositories WHERE id = ?')
+                .get(id) as { id: string; full_name: string; coding_standards: string | null } | undefined;
+
+            if (!repo) {
+                throw new NotFoundError('Repository', id);
+            }
+
+            res.json({
+                data: {
+                    repo_full_name: repo.full_name,
+                    coding_standards: repo.coding_standards,
+                },
+            });
+        })
+    );
+
+    // PUT /:id/coding-standards — Update coding standards for a repo
+    router.put(
+        '/:id/coding-standards',
+        validate(UpdateStandardsBodySchema),
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+            const body = req.body as z.infer<typeof UpdateStandardsBodySchema>;
+
+            const existing = db
+                .prepare('SELECT id, full_name FROM repositories WHERE id = ?')
+                .get(id) as { id: string; full_name: string } | undefined;
+
+            if (!existing) {
+                throw new NotFoundError('Repository', id);
+            }
+
+            db.prepare('UPDATE repositories SET coding_standards = ? WHERE id = ?')
+                .run(body.coding_standards, id);
+
+            logger.info('Coding standards updated via API', {
+                id,
+                full_name: existing.full_name,
+                length: body.coding_standards.length,
+            });
+
+            res.json({
+                data: {
+                    repo_full_name: existing.full_name,
+                    coding_standards: body.coding_standards,
+                },
+            });
+        })
+    );
+
+    // POST /:id/coding-standards/regenerate — Force regenerate coding standards
+    router.post(
+        '/:id/coding-standards/regenerate',
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+
+            const repo = db
+                .prepare('SELECT id, full_name, provider, org_url, token, default_branch FROM repositories WHERE id = ?')
+                .get(id) as {
+                    id: string;
+                    full_name: string;
+                    provider: string;
+                    org_url: string | null;
+                    token: string | null;
+                    default_branch: string;
+                } | undefined;
+
+            if (!repo) {
+                throw new NotFoundError('Repository', id);
+            }
+
+            // Get clone URL from provider and prepare the repo
+            const gitProvider = await deps.providerFactory.getProvider(
+                repo.provider as Provider,
+                {
+                    orgUrl: repo.org_url ?? undefined,
+                    token: repo.token ?? undefined,
+                },
+            );
+            const cloneUrl = (gitProvider as { getCloneUrl(name: string): string }).getCloneUrl(repo.full_name);
+
+            const repoRecord = { default_branch: repo.default_branch };
+
+            const repoPath = await deps.repoManager.prepare(
+                repo.full_name,
+                repoRecord.default_branch,
+                repoRecord.default_branch, // checkout the default branch HEAD
+                cloneUrl,
+            );
+
+            const standards = await deps.standardsGenerator.generate(repoPath);
+
+            db.prepare('UPDATE repositories SET coding_standards = ? WHERE id = ?')
+                .run(standards, id);
+
+            logger.info('Coding standards regenerated via API', {
+                id,
+                full_name: repo.full_name,
+                length: standards.length,
+            });
+
+            res.json({
+                data: {
+                    repo_full_name: repo.full_name,
+                    coding_standards: standards,
+                },
+            });
         })
     );
 

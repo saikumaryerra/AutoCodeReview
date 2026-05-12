@@ -43,6 +43,8 @@ export function initializeDatabase(dbPath: string): Database.Database {
     const migrations = [
         'ALTER TABLE reviews ADD COLUMN pr_state TEXT CHECK(pr_state IN (\'open\', \'closed\', \'merged\'))',
         'ALTER TABLE reviews ADD COLUMN pr_url TEXT',
+        'ALTER TABLE repositories ADD COLUMN coding_standards TEXT',
+        'ALTER TABLE repositories ADD COLUMN token TEXT',
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch { /* column already exists */ }

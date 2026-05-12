@@ -17,6 +17,7 @@ interface RepoRow {
     full_name: string;
     provider: string;
     org_url: string | null;
+    token: string | null;
     default_branch: string;
     is_active: number;
     last_polled_at: string | null;
@@ -245,7 +246,11 @@ export class PollerService {
         skipDrafts: boolean
     ): Promise<number> {
         const provider = await this.providerFactory.getProvider(
-            repo.provider as Provider
+            repo.provider as Provider,
+            {
+                orgUrl: repo.org_url ?? undefined,
+                token: repo.token ?? undefined,
+            },
         );
 
         const pullRequests = await provider.listPullRequests(
@@ -330,6 +335,8 @@ export class PollerService {
                     prState: pr.state,
                     prUrl: pr.url,
                     enqueuedAt: new Date(),
+                    orgUrl: repo.org_url ?? undefined,
+                    token: repo.token ?? undefined,
                 };
 
                 this.queue.enqueue(job);
@@ -360,7 +367,7 @@ export class PollerService {
     private getActiveRepos(): RepoRow[] {
         if (!this.stmtGetActiveRepos) {
             this.stmtGetActiveRepos = this.db.prepare(`
-                SELECT id, full_name, provider, org_url, default_branch,
+                SELECT id, full_name, provider, org_url, token, default_branch,
                        is_active, last_polled_at
                 FROM repositories
                 WHERE is_active = 1
@@ -435,7 +442,11 @@ export class PollerService {
         for (const repo of repos) {
             try {
                 const provider = await this.providerFactory.getProvider(
-                    repo.provider as Provider
+                    repo.provider as Provider,
+                    {
+                        orgUrl: repo.org_url ?? undefined,
+                        token: repo.token ?? undefined,
+                    },
                 );
 
                 const rows = openPrRows.all(repo.full_name) as Array<{

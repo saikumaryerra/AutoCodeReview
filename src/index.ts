@@ -14,6 +14,7 @@ import { reconcileOrphanedReviews } from './poller/reconciliation.js';
 import { PollerService } from './poller/poller.service.js';
 import { RepoManager } from './reviewer/repo-manager.js';
 import { ClaudeCliExecutor } from './reviewer/claude-cli.executor.js';
+import { CodingStandardsGenerator } from './reviewer/coding-standards.generator.js';
 import { ReviewerService } from './reviewer/reviewer.service.js';
 import { startApiServer } from './api/server.js';
 import { createModuleLogger } from './shared/logger.js';
@@ -77,7 +78,10 @@ async function main() {
             // Auto-detect the default branch from the provider
             let defaultBranch = 'main';
             try {
-                const gitProvider = await providerFactory.getProvider(provider as any);
+                const gitProvider = await providerFactory.getProvider(provider as any, {
+                    orgUrl: provider === 'azure_devops' ? config.azureDevOps.orgUrl : undefined,
+                    token: provider === 'azure_devops' ? config.azureDevOps.token : undefined,
+                });
                 defaultBranch = await gitProvider.getDefaultBranch(fullName);
                 logger.info(`Detected default branch: ${defaultBranch}`, { repo: fullName });
             } catch (err) {
@@ -92,10 +96,12 @@ async function main() {
                 full_name: fullName,
                 provider,
                 org_url: provider === 'azure_devops' ? (config.azureDevOps.orgUrl ?? null) : null,
+                token: null,
                 default_branch: defaultBranch,
                 added_at: new Date().toISOString(),
                 last_polled_at: null,
                 is_active: true,
+                coding_standards: null,
             });
             logger.info(`Seeded repository: ${fullName} (${provider})`);
         }
@@ -117,6 +123,11 @@ async function main() {
         config.claude.reviewTimeoutSeconds,
         config.claude.model
     );
+    const standardsGenerator = new CodingStandardsGenerator(
+        config.claude.cliPath,
+        config.claude.standardsTimeoutSeconds,
+        config.claude.model,
+    );
 
     // 10. Start the reviewer service (continuous processing loop)
     const reviewerService = new ReviewerService(
@@ -126,7 +137,9 @@ async function main() {
         configService,
         repoManager,
         claudeExecutor,
-        reviewsRepo
+        reviewsRepo,
+        reposRepo,
+        standardsGenerator,
     );
     reviewerService.startProcessing(); // runs in background (not awaited)
     logger.info('Reviewer service started');
@@ -231,6 +244,7 @@ async function main() {
         reviewerService,
         cleanupRepo,
         repoManager,
+        standardsGenerator,
     });
 
     const totalRepos = config.github.repos.length + config.azureDevOps.repos.length;

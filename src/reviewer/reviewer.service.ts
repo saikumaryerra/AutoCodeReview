@@ -6,14 +6,19 @@
  * the in-memory queue.
  */
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { v4 as uuid } from 'uuid';
 import type { ReviewJob, GitProvider, Provider, ProviderFile } from '../shared/types.js';
 import type { ReviewQueue } from '../poller/queue.js';
 import type { ConfigService } from '../config/config.service.js';
 import type { ReviewsRepository } from '../database/reviews.repository.js';
+import type { ReposRepository } from '../database/repos.repository.js';
 import type { RepoManager } from './repo-manager.js';
 import type { ClaudeCliExecutor } from './claude-cli.executor.js';
+import type { CodingStandardsGenerator } from './coding-standards.generator.js';
+import { STANDARDS_FILENAME } from './coding-standards.generator.js';
 import { buildReviewPrompt } from './prompt.js';
 import { parseClaudeOutput } from './parser.js';
 import { formatReviewComment } from './comment-formatter.js';
@@ -26,7 +31,10 @@ const logger = createModuleLogger('reviewer-service');
 // The concrete ProviderFactory is injected at construction time.
 
 export interface ProviderFactory {
-    getProvider(providerName: Provider): Promise<GitProvider>;
+    getProvider(
+        providerName: Provider,
+        opts?: { orgUrl?: string; token?: string },
+    ): Promise<GitProvider>;
 }
 
 // ── Current review tracking ───────────────────────────────────────
@@ -57,6 +65,8 @@ export class ReviewerService {
         private readonly repoManager: RepoManager,
         private readonly claudeExecutor: ClaudeCliExecutor,
         private readonly reviewsRepo: ReviewsRepository,
+        private readonly reposRepo: ReposRepository,
+        private readonly standardsGenerator: CodingStandardsGenerator,
     ) {}
 
     /**
@@ -161,7 +171,10 @@ export class ReviewerService {
 
         try {
             // ── Step 3: Get provider ──────────────────────────────
-            const provider = await this.providerFactory.getProvider(job.provider);
+            const provider = await this.providerFactory.getProvider(job.provider, {
+                orgUrl: job.orgUrl,
+                token: job.token,
+            });
 
             // ── Step 4: Prepare local checkout ────────────────────
             const cloneUrl = provider.getCloneUrl(job.repoFullName);
@@ -171,6 +184,32 @@ export class ReviewerService {
                 job.commitSha,
                 cloneUrl,
             );
+
+            // ── Step 4b: Ensure coding standards ─────────────────
+            let hasCodingStandards = false;
+            try {
+                let standards = this.reposRepo.getCodingStandards(job.repoFullName);
+                if (!standards) {
+                    logger.info('Generating coding standards for first-time repo', logCtx);
+                    standards = await this.standardsGenerator.generate(repoPath);
+                    this.reposRepo.updateCodingStandards(job.repoFullName, standards);
+                    logger.info('Coding standards generated and saved', {
+                        ...logCtx,
+                        length: standards.length,
+                    });
+                }
+                await fs.writeFile(
+                    path.join(repoPath, STANDARDS_FILENAME),
+                    standards,
+                    'utf-8',
+                );
+                hasCodingStandards = true;
+            } catch (err) {
+                logger.warn('Coding standards generation failed, proceeding without', {
+                    ...logCtx,
+                    error: (err as Error).message,
+                });
+            }
 
             // ── Step 5: Generate diff ─────────────────────────────
             // Prefer local diff for consistency; fall back to provider API.
@@ -240,6 +279,7 @@ export class ReviewerService {
                 commitMessage: job.commitMessage,
                 diff,
                 changedFiles: changedFiles.map(f => f.path),
+                hasCodingStandards,
             });
 
             // ── Step 9: Update status to in_progress ──────────────

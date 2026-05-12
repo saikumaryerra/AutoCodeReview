@@ -109,6 +109,36 @@ export interface ReviewListParams {
   order?: 'asc' | 'desc';
 }
 
+export interface PRListItem {
+  repo_full_name: string;
+  provider: Provider;
+  pr_number: number;
+  pr_title: string;
+  pr_author: string;
+  branch_name: string;
+  pr_state: PrState | null;
+  pr_url: string | null;
+  latest_review_id: string;
+  latest_commit_sha: string;
+  latest_severity: Severity;
+  latest_status: ReviewStatus;
+  latest_findings_count: number;
+  latest_review_duration_ms: number | null;
+  latest_review_at: string;
+  review_count: number;
+}
+
+export interface PRListParams {
+  repo?: string;
+  provider?: Provider;
+  severity?: Severity;
+  pr_state?: PrState;
+  page?: number;
+  limit?: number;
+  sort?: 'latest_review_at' | 'pr_number' | 'severity';
+  order?: 'asc' | 'desc';
+}
+
 export interface TriggerReviewBody {
   repo_full_name: string;
   pr_number: number;
@@ -120,17 +150,22 @@ export interface Repository {
   id: string;
   full_name: string;
   provider: Provider;
+  org_url: string | null;
+  has_token: boolean;
   default_branch: string;
   is_active: boolean;
   last_polled_at: string | null;
   added_at: string;
   review_count: number;
+  coding_standards: string | null;
 }
 
 export interface AddRepoBody {
   full_name: string;
   provider: Provider;
   default_branch: string;
+  org_url?: string;
+  token?: string;
 }
 
 export interface UpdateRepoBody {

@@ -72,7 +72,35 @@ export class AzureDevOpsProvider implements GitProvider {
         }
 
         for (const status of statusesToFetch) {
-            const prs = await api.getPullRequests(repo, { status }, project);
+            let prs;
+            try {
+                prs = await api.getPullRequests(repo, { status }, project);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                log.error('Azure DevOps getPullRequests failed', {
+                    orgUrl: this.orgUrl,
+                    project,
+                    repo,
+                    status,
+                    error: msg,
+                });
+                throw new Error(
+                    `Azure DevOps listPullRequests failed for "${project}/${repo}" at ${this.orgUrl}: ${msg}`
+                );
+            }
+
+            if (!Array.isArray(prs)) {
+                log.error('Azure DevOps getPullRequests returned non-array', {
+                    orgUrl: this.orgUrl,
+                    project,
+                    repo,
+                    status,
+                    received: typeof prs,
+                });
+                throw new Error(
+                    `Azure DevOps returned ${prs === null ? 'null' : typeof prs} instead of an array for "${project}/${repo}" — check that the project and repo exist in ${this.orgUrl}.`
+                );
+            }
 
             for (const pr of prs) {
                 let mappedState: ProviderPullRequest['state'];
@@ -210,7 +238,8 @@ export class AzureDevOpsProvider implements GitProvider {
         const { project, repo } = this.splitRepo(repoFullName);
         // Extract org name from orgUrl (e.g., "https://dev.azure.com/myorg" -> "myorg")
         const org = this.extractOrgName();
-        return `https://pat:${this.token}@dev.azure.com/${org}/${project}/_git/${repo}`;
+        // URL-encode segments so names with spaces or other special chars resolve correctly.
+        return `https://pat:${this.token}@dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_git/${encodeURIComponent(repo)}`;
     }
 
     async getDefaultBranch(repoFullName: string): Promise<string> {
@@ -303,13 +332,13 @@ export class AzureDevOpsProvider implements GitProvider {
         project: string;
         repo: string;
     } {
-        const [project, repo] = repoFullName.split('/');
-        if (!project || !repo) {
+        const parts = repoFullName.split('/').map((p) => p.trim());
+        if (parts.length !== 2 || !parts[0] || !parts[1]) {
             throw new Error(
                 `Invalid Azure DevOps repo format "${repoFullName}". Expected "Project/Repo".`
             );
         }
-        return { project, repo };
+        return { project: parts[0], repo: parts[1] };
     }
 
     private extractOrgName(): string {

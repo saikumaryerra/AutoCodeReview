@@ -49,7 +49,12 @@ function asyncHandler(fn: AsyncHandler): import('express').RequestHandler {
 export interface ReviewsRouterDeps {
     reviewsRepo: ReviewsRepository;
     queue: ReviewQueue;
-    providerFactory: { getProvider(name: Provider): import('../../shared/types.js').GitProvider };
+    providerFactory: {
+        getProvider(
+            name: Provider,
+            opts?: { orgUrl?: string; token?: string },
+        ): Promise<import('../../shared/types.js').GitProvider>;
+    };
     configService: { get<T>(key: string): T };
     db: Database.Database;
 }
@@ -247,7 +252,19 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 throw new NotFoundError('Review', id);
             }
 
-            const provider = await deps.providerFactory.getProvider(review.provider);
+            // Look up repo row to get per-repo credentials (org_url, token)
+            const repoRow = deps.db
+                .prepare(
+                    'SELECT org_url, token FROM repositories WHERE full_name = ?',
+                )
+                .get(review.repo_full_name) as
+                | { org_url: string | null; token: string | null }
+                | undefined;
+
+            const provider = await deps.providerFactory.getProvider(review.provider, {
+                orgUrl: repoRow?.org_url ?? undefined,
+                token: repoRow?.token ?? undefined,
+            });
             const { formatReviewComment } = await import('../../reviewer/comment-formatter.js');
             const body = formatReviewComment(review);
 
