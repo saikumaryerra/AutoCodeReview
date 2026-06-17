@@ -41,6 +41,8 @@ const ConfigSchema = z.object({
         retentionDays: z.number().min(0).default(90),
         autoPostComment: z.boolean().default(false),
         autoPostSkipClean: z.boolean().default(true),
+        retryEnabled: z.boolean().default(true),
+        maxRetryAttempts: z.number().min(1).max(50).default(10),
     }),
 }).refine(
     (cfg) => cfg.github.repos.length > 0 || cfg.azureDevOps.repos.length > 0,
@@ -91,6 +93,8 @@ export function loadConfig(): AppConfig {
             retentionDays: Number(process.env.REVIEW_RETENTION_DAYS ?? 90),
             autoPostComment: process.env.AUTO_POST_COMMENT === 'true',
             autoPostSkipClean: process.env.AUTO_POST_SKIP_CLEAN !== 'false',
+            retryEnabled: process.env.REVIEW_RETRY_ENABLED !== 'false',
+            maxRetryAttempts: Number(process.env.REVIEW_MAX_RETRY_ATTEMPTS) || 10,
         },
     });
 }
