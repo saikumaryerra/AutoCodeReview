@@ -97,6 +97,11 @@ export function createStatusRouter(deps: StatusRouterDeps): Router {
                 .get() as { count: number };
             const reviewsToday = todayRow.count;
 
+            const scheduledRetriesRow = db
+                .prepare('SELECT COUNT(*) AS count FROM reviews WHERE next_retry_at IS NOT NULL')
+                .get() as { count: number };
+            const scheduledRetries = scheduledRetriesRow.count;
+
             // Claude CLI availability
             let claudeCliAvailable = false;
             try {
@@ -147,6 +152,7 @@ export function createStatusRouter(deps: StatusRouterDeps): Router {
                 next_poll_at: nextPollAt,
                 total_reviews_completed: totalReviewsCompleted,
                 reviews_today: reviewsToday,
+                scheduled_retries: scheduledRetries,
                 claude_cli_available: claudeCliAvailable,
                 retention: {
                     enabled: retentionEnabled,

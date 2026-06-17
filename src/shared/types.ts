@@ -206,6 +206,7 @@ export interface SystemStatus {
     next_poll_at: string | null;
     total_reviews_completed: number;
     reviews_today: number;
+    scheduled_retries: number;
     claude_cli_available: boolean;
     retention: {
         enabled: boolean;
