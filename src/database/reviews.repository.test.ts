@@ -54,4 +54,16 @@ describe('ReviewsRepository retry columns', () => {
         expect(r?.retry_count).toBe(0);
         expect(r?.next_retry_at).toBeNull();
     });
+
+    it('persists explicit retry values through getById and list()', () => {
+        repo.insert(makeReview({ id: 'r1', retry_count: 3, next_retry_at: '2026-06-18T10:00:00.000Z' }));
+
+        const byId = repo.getById('r1');
+        expect(byId?.retry_count).toBe(3);
+        expect(byId?.next_retry_at).toBe('2026-06-18T10:00:00.000Z');
+
+        const listed = repo.list({}).data.find((r) => r.id === 'r1');
+        expect(listed?.retry_count).toBe(3);
+        expect(listed?.next_retry_at).toBe('2026-06-18T10:00:00.000Z');
+    });
 });
