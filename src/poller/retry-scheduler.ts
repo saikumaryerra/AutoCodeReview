@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import type { ReviewJob, Provider, PrState } from '../shared/types.js';
+import type { ReviewJob, Provider } from '../shared/types.js';
 import type { ReviewsRepository, ClaimedRetryRow } from '../database/reviews.repository.js';
 import type { ReviewQueue } from './queue.js';
 import { createModuleLogger } from '../shared/logger.js';
@@ -36,6 +36,7 @@ export class RetryScheduler {
                 });
             });
         }, RETRY_TICK_SECONDS * 1000);
+        this.handle.unref();
         // Run one immediately so retries scheduled before a restart resume promptly.
         this.tick().catch((err) => {
             log.error('Unhandled error in initial retry tick', {
@@ -81,7 +82,7 @@ export class RetryScheduler {
             commitMessage: row.commit_message ?? '',
             branchName: row.branch_name,
             targetBranch: row.target_branch ?? 'main',
-            prState: (row.pr_state as PrState) ?? 'open',
+            prState: row.pr_state ?? 'open',
             prUrl: row.pr_url ?? '',
             enqueuedAt: new Date(),
             orgUrl: repo?.org_url ?? undefined,
