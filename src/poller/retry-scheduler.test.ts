@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { getSchemaSQL } from '../database/schema.js';
 import { ReviewsRepository } from '../database/reviews.repository.js';
@@ -39,6 +39,10 @@ describe('RetryScheduler.tick', () => {
         scheduler = new RetryScheduler(repo, queue, stubRepos);
     });
 
+    afterEach(() => {
+        db.close();
+    });
+
     it('re-enqueues a due failed review and flips it to pending', async () => {
         repo.insert(makeReview({ id: 'r1' }));
         repo.scheduleRetry('r1', 1, '2020-01-01T00:00:00.000Z', 'rate limit');
@@ -76,5 +80,19 @@ describe('RetryScheduler.tick', () => {
         await scheduler.tick();
 
         expect(queue.size()).toBe(1);
+    });
+
+    it('still enqueues when repo lookup returns null (credentials undefined)', async () => {
+        const nullRepos = { getByFullName: () => null };
+        const s = new RetryScheduler(repo, queue, nullRepos);
+        repo.insert(makeReview({ id: 'r1' }));
+        repo.scheduleRetry('r1', 1, '2020-01-01T00:00:00.000Z', 'x');
+
+        await s.tick();
+
+        expect(queue.size()).toBe(1);
+        const job = queue.peek()!;
+        expect(job.orgUrl).toBeUndefined();
+        expect(job.token).toBeUndefined();
     });
 });
