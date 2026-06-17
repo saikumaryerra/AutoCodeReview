@@ -30,6 +30,8 @@ interface ReviewRow {
     status: string;
     error_message: string | null;
     created_at: string;
+    retry_count: number;
+    next_retry_at: string | null;
 }
 
 /** List-level row includes findings_count instead of full findings. */
@@ -130,13 +132,15 @@ export class ReviewsRepository {
                 commit_sha, commit_message, branch_name, target_branch,
                 pr_state, pr_url,
                 summary, severity, findings, raw_output, files_reviewed, stats,
-                review_duration_ms, claude_model, status, error_message, created_at
+                review_duration_ms, claude_model, status, error_message, created_at,
+                retry_count, next_retry_at
             ) VALUES (
                 @id, @repo_full_name, @provider, @pr_number, @pr_title, @pr_author,
                 @commit_sha, @commit_message, @branch_name, @target_branch,
                 @pr_state, @pr_url,
                 @summary, @severity, @findings, @raw_output, @files_reviewed, @stats,
-                @review_duration_ms, @claude_model, @status, @error_message, @created_at
+                @review_duration_ms, @claude_model, @status, @error_message, @created_at,
+                @retry_count, @next_retry_at
             )
         `);
 
@@ -164,6 +168,8 @@ export class ReviewsRepository {
             status: review.status,
             error_message: review.error_message,
             created_at: review.created_at,
+            retry_count: review.retry_count ?? 0,
+            next_retry_at: review.next_retry_at ?? null,
         });
 
         log.debug('Review inserted', { id: review.id, repo: review.repo_full_name, pr: review.pr_number });
