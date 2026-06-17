@@ -70,6 +70,18 @@ export function ReviewDetail() {
         Back to Dashboard
       </Link>
 
+      {review.status === 'failed' && review.next_retry_at && (
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Retry scheduled — attempt {(review.retry_count ?? 0) + 1} — next attempt at{' '}
+          {new Date(review.next_retry_at).toLocaleString()}.
+        </div>
+      )}
+      {review.status === 'failed' && !review.next_retry_at && (review.retry_count ?? 0) > 0 && (
+        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Failed permanently after {(review.retry_count ?? 0) + 1} attempts.
+        </div>
+      )}
+
       {/* Header */}
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">

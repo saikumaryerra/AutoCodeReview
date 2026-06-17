@@ -65,6 +65,8 @@ export interface ReviewDetail {
   claude_model: string | null;
   raw_output?: string;
   created_at: string;
+  retry_count?: number;
+  next_retry_at?: string | null;
 }
 
 export interface PRReviewItem {
