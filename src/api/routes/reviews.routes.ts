@@ -196,6 +196,8 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
                 if (force) {
                     // Reset existing review to pending so the reviewer service will reprocess it
                     reviewsRepo.updateStatus(existing.id, 'pending');
+                    // A human-initiated retry starts the auto-retry budget fresh.
+                    reviewsRepo.resetRetryState(existing.id);
                     logger.info('Existing review reset to pending for re-review', {
                         reviewId: existing.id,
                         previousStatus: existing.status,
