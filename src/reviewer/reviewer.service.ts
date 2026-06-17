@@ -332,17 +332,16 @@ export class ReviewerService {
                 this.scheduleRetryOrGiveUp(reviewId, job, errorDetail);
             }
 
-            logger.info('Review completed', {
-                ...logCtx,
-                reviewId,
-                severity: parsed.severity,
-                findingsCount: parsed.findings.length,
-                durationMs: cliResult.durationMs,
-                model: parsed.model ?? cliResult.model,
-            });
-
-            // ── Step 14: Auto-post comment (if enabled) ───────────
+            // ── Step 14: Log + auto-post (success only) ───────────
             if (cliResult.success) {
+                logger.info('Review completed', {
+                    ...logCtx,
+                    reviewId,
+                    severity: parsed.severity,
+                    findingsCount: parsed.findings.length,
+                    durationMs: cliResult.durationMs,
+                    model: parsed.model ?? cliResult.model,
+                });
                 await this.maybeAutoPostComment(reviewId, provider, job, parsed, logCtx);
             }
 
@@ -416,26 +415,34 @@ export class ReviewerService {
     private scheduleRetryOrGiveUp(reviewId: string, job: ReviewJob, errorDetail: string): void {
         this.insertSeenCommit(job);
 
-        const retryEnabled = this.configService.get<boolean>('review.retryEnabled');
-        const maxAttempts = this.configService.get<number>('review.maxRetryAttempts');
-        const currentRetries = this.reviewsRepo.getRetryCount(reviewId);
+        try {
+            const retryEnabled = this.configService.get<boolean>('review.retryEnabled');
+            const maxAttempts = this.configService.get<number>('review.maxRetryAttempts');
+            const currentRetries = this.reviewsRepo.getRetryCount(reviewId);
 
-        if (retryEnabled && currentRetries < maxAttempts - 1) {
-            const nextRetry = currentRetries + 1;
-            const nextRetryAt = nextRetryTimestamp(nextRetry, new Date());
-            this.reviewsRepo.scheduleRetry(reviewId, nextRetry, nextRetryAt, errorDetail);
-            logger.info('Review failed; retry scheduled', {
+            if (retryEnabled && currentRetries < maxAttempts - 1) {
+                const nextRetry = currentRetries + 1;
+                const nextRetryAt = nextRetryTimestamp(nextRetry, new Date());
+                this.reviewsRepo.scheduleRetry(reviewId, nextRetry, nextRetryAt, errorDetail);
+                logger.info('Review failed; retry scheduled', {
+                    reviewId,
+                    nextAttempt: nextRetry + 1,
+                    maxAttempts,
+                    nextRetryAt,
+                });
+            } else {
+                this.reviewsRepo.markFailedFinal(reviewId, errorDetail);
+                logger.info('Review failed permanently', {
+                    reviewId,
+                    attempts: currentRetries + 1,
+                    maxAttempts,
+                    retryEnabled,
+                });
+            }
+        } catch (err) {
+            logger.error('Failed to record retry state', {
                 reviewId,
-                attempt: nextRetry + 1,
-                maxAttempts,
-                nextRetryAt,
-            });
-        } else {
-            this.reviewsRepo.markFailedFinal(reviewId, errorDetail);
-            logger.info('Review failed permanently', {
-                reviewId,
-                attempts: currentRetries + 1,
-                retryEnabled,
+                error: (err as Error).message,
             });
         }
     }
