@@ -12,6 +12,7 @@ import { ProviderFactory } from './poller/provider.factory.js';
 import { ReviewQueue } from './poller/queue.js';
 import { reconcileOrphanedReviews } from './poller/reconciliation.js';
 import { PollerService } from './poller/poller.service.js';
+import { RetryScheduler } from './poller/retry-scheduler.js';
 import { RepoManager } from './reviewer/repo-manager.js';
 import { ClaudeCliExecutor } from './reviewer/claude-cli.executor.js';
 import { CodingStandardsGenerator } from './reviewer/coding-standards.generator.js';
@@ -156,6 +157,11 @@ async function main() {
         intervalSeconds: configService.get<number>('polling.intervalSeconds'),
     });
 
+    // 11b. Start the retry scheduler (re-enqueues due failed reviews)
+    const retryScheduler = new RetryScheduler(reviewsRepo, queue, reposRepo);
+    retryScheduler.start();
+    logger.info('Retry scheduler started');
+
     // 12. Schedule daily cleanup at 3:00 AM
     cron.schedule('0 11 * * *', async () => {
         logger.info('=== Daily cleanup started ===');
@@ -254,6 +260,7 @@ async function main() {
     // Graceful shutdown
     const shutdown = () => {
         logger.info('Shutting down...');
+        retryScheduler.stop();
         pollerService.stop();
         db.close();
         process.exit(0);
