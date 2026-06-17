@@ -341,6 +341,7 @@ export class ReviewsRepository {
                 commit_sha, commit_message, branch_name, pr_state, pr_url,
                 summary, severity, files_reviewed, stats,
                 review_duration_ms, claude_model, status, error_message, created_at,
+                retry_count, next_retry_at,
                 json_array_length(findings) AS findings_count
             FROM reviews
             ${whereClause}
