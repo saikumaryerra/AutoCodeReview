@@ -1,7 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { loadConfig } from './config.js';
 
 describe('loadConfig retry settings', () => {
+    afterEach(() => {
+        delete process.env.REVIEW_RETRY_ENABLED;
+        delete process.env.REVIEW_MAX_RETRY_ATTEMPTS;
+        delete process.env.GITHUB_TOKEN;
+        delete process.env.GITHUB_REPOS;
+    });
+
     it('defaults retryEnabled=true and maxRetryAttempts=10', () => {
         process.env.GITHUB_TOKEN = 'x';
         process.env.GITHUB_REPOS = 'owner/repo';
