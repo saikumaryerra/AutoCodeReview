@@ -45,6 +45,8 @@ export function initializeDatabase(dbPath: string): Database.Database {
         'ALTER TABLE reviews ADD COLUMN pr_url TEXT',
         'ALTER TABLE repositories ADD COLUMN coding_standards TEXT',
         'ALTER TABLE repositories ADD COLUMN token TEXT',
+        'ALTER TABLE reviews ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE reviews ADD COLUMN next_retry_at TEXT',
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch { /* column already exists */ }

@@ -43,6 +43,8 @@ export interface Review {
     status: ReviewStatus;
     error_message: string | null;
     created_at: string;
+    retry_count?: number;
+    next_retry_at?: string | null;
 }
 
 // ── PR-grouped listing (dashboard) ──────────────────────
