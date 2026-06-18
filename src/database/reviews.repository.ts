@@ -30,6 +30,8 @@ interface ReviewRow {
     status: string;
     error_message: string | null;
     created_at: string;
+    retry_count: number;
+    next_retry_at: string | null;
 }
 
 /** List-level row includes findings_count instead of full findings. */
@@ -43,6 +45,23 @@ export type ParsedReview = Review;
 /** Parsed list item (no raw_output, findings replaced by count). */
 export interface ReviewListItem extends Omit<Review, 'findings' | 'raw_output'> {
     findings_count: number;
+}
+
+/** Minimal review fields needed to rebuild a ReviewJob for a retry. */
+export interface ClaimedRetryRow {
+    id: string;
+    repo_full_name: string;
+    provider: Provider;
+    pr_number: number;
+    pr_title: string;
+    pr_author: string;
+    commit_sha: string;
+    commit_message: string | null;
+    branch_name: string;
+    target_branch: string;
+    pr_state: PrState | null;
+    pr_url: string | null;
+    retry_count: number;
 }
 
 export interface ReviewListFilters {
@@ -130,13 +149,15 @@ export class ReviewsRepository {
                 commit_sha, commit_message, branch_name, target_branch,
                 pr_state, pr_url,
                 summary, severity, findings, raw_output, files_reviewed, stats,
-                review_duration_ms, claude_model, status, error_message, created_at
+                review_duration_ms, claude_model, status, error_message, created_at,
+                retry_count, next_retry_at
             ) VALUES (
                 @id, @repo_full_name, @provider, @pr_number, @pr_title, @pr_author,
                 @commit_sha, @commit_message, @branch_name, @target_branch,
                 @pr_state, @pr_url,
                 @summary, @severity, @findings, @raw_output, @files_reviewed, @stats,
-                @review_duration_ms, @claude_model, @status, @error_message, @created_at
+                @review_duration_ms, @claude_model, @status, @error_message, @created_at,
+                @retry_count, @next_retry_at
             )
         `);
 
@@ -164,6 +185,8 @@ export class ReviewsRepository {
             status: review.status,
             error_message: review.error_message,
             created_at: review.created_at,
+            retry_count: review.retry_count ?? 0,
+            next_retry_at: review.next_retry_at ?? null,
         });
 
         log.debug('Review inserted', { id: review.id, repo: review.repo_full_name, pr: review.pr_number });
@@ -186,6 +209,80 @@ export class ReviewsRepository {
         });
 
         log.debug('Review status updated', { id, status });
+    }
+
+    /** Number of retries already performed for a review. */
+    getRetryCount(id: string): number {
+        const row = this.db
+            .prepare('SELECT retry_count FROM reviews WHERE id = ?')
+            .get(id) as { retry_count: number } | undefined;
+        return row?.retry_count ?? 0;
+    }
+
+    /** Record a failed attempt and schedule the next retry. */
+    scheduleRetry(id: string, retryCount: number, nextRetryAt: string, errorMessage: string): void {
+        this.db.prepare(`
+            UPDATE reviews
+            SET status = 'failed',
+                retry_count = @retry_count,
+                next_retry_at = @next_retry_at,
+                error_message = @error_message
+            WHERE id = @id
+        `).run({ id, retry_count: retryCount, next_retry_at: nextRetryAt, error_message: errorMessage });
+        log.debug('Review retry scheduled', { id, retryCount, nextRetryAt });
+    }
+
+    /** Mark a review failed permanently (no further retries). */
+    markFailedFinal(id: string, errorMessage: string): void {
+        this.db.prepare(`
+            UPDATE reviews
+            SET status = 'failed', next_retry_at = NULL, error_message = @error_message
+            WHERE id = @id
+        `).run({ id, error_message: errorMessage });
+        log.debug('Review marked failed (final)', { id });
+    }
+
+    /** Clear retry budget (used when a human manually re-reviews). */
+    resetRetryState(id: string): void {
+        this.db.prepare(`
+            UPDATE reviews SET retry_count = 0, next_retry_at = NULL WHERE id = @id
+        `).run({ id });
+        log.debug('Review retry state reset', { id });
+    }
+
+    /**
+     * Atomically claim all failed reviews whose retry is due (next_retry_at <= now),
+     * flip them to 'pending', and return the claimed rows. Per-row claim guards
+     * against double-enqueue when ticks overlap.
+     */
+    claimDueRetries(nowIso: string): ClaimedRetryRow[] {
+        const tx = this.db.transaction((now: string): ClaimedRetryRow[] => {
+            const due = this.db.prepare(`
+                SELECT id FROM reviews
+                WHERE status = 'failed' AND next_retry_at IS NOT NULL AND next_retry_at <= @now
+            `).all({ now }) as Array<{ id: string }>;
+
+            const claimStmt = this.db.prepare(`
+                UPDATE reviews SET status = 'pending', next_retry_at = NULL
+                WHERE id = @id AND status = 'failed'
+            `);
+            const selectStmt = this.db.prepare(`
+                SELECT id, repo_full_name, provider, pr_number, pr_title, pr_author,
+                       commit_sha, commit_message, branch_name, target_branch,
+                       pr_state, pr_url, retry_count
+                FROM reviews WHERE id = @id
+            `);
+
+            const claimed: ClaimedRetryRow[] = [];
+            for (const { id } of due) {
+                const res = claimStmt.run({ id });
+                if (res.changes === 1) {
+                    claimed.push(selectStmt.get({ id }) as ClaimedRetryRow);
+                }
+            }
+            return claimed;
+        });
+        return tx(nowIso);
     }
 
     /**
@@ -335,6 +432,7 @@ export class ReviewsRepository {
                 commit_sha, commit_message, branch_name, pr_state, pr_url,
                 summary, severity, files_reviewed, stats,
                 review_duration_ms, claude_model, status, error_message, created_at,
+                retry_count, next_retry_at,
                 json_array_length(findings) AS findings_count
             FROM reviews
             ${whereClause}

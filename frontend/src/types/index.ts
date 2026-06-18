@@ -65,6 +65,8 @@ export interface ReviewDetail {
   claude_model: string | null;
   raw_output?: string;
   created_at: string;
+  retry_count?: number;
+  next_retry_at?: string | null;
 }
 
 export interface PRReviewItem {
@@ -210,6 +212,7 @@ export interface SystemStatus {
   next_poll_at: string | null;
   total_reviews_completed: number;
   reviews_today: number;
+  scheduled_retries: number;
   claude_cli_available: boolean;
   retention: {
     enabled: boolean;
