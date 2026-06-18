@@ -28,8 +28,17 @@ export class ClaudeCliExecutor {
     constructor(
         private readonly cliPath: string,
         private readonly timeoutSeconds: number,
-        private readonly model: string | undefined,
+        private model: string | undefined,
     ) {}
+
+    /**
+     * Updates the model used for subsequent reviews. Called when the
+     * `claude.model` setting changes at runtime. Pass `undefined` to let
+     * the Claude CLI choose its own default.
+     */
+    setModel(model: string | undefined): void {
+        this.model = model;
+    }
 
     /**
      * Executes a review by spawning the Claude CLI with the repo as the
