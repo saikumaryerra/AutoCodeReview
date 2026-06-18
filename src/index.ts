@@ -29,6 +29,15 @@ function formatBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+/**
+ * Translates the `claude.model` setting into the value the executors expect.
+ * The UI sentinel 'default' (and an empty value) means "no --model flag", so
+ * the Claude CLI picks its own model.
+ */
+function resolveModel(model: string | undefined): string | undefined {
+    return !model || model === 'default' ? undefined : model;
+}
+
 async function main() {
     logger.info('Starting PR Review System...');
 
@@ -118,17 +127,27 @@ async function main() {
     }
 
     // 9. Create reviewer components
+    // Read the effective model (DB override > env) so a UI-saved selection
+    // survives restarts, then react to runtime changes via configService.
     const repoManager = new RepoManager(config.storage.reposDir);
+    const initialModel = resolveModel(configService.get<string>('claude.model'));
     const claudeExecutor = new ClaudeCliExecutor(
         config.claude.cliPath,
         config.claude.reviewTimeoutSeconds,
-        config.claude.model
+        initialModel
     );
     const standardsGenerator = new CodingStandardsGenerator(
         config.claude.cliPath,
         config.claude.standardsTimeoutSeconds,
-        config.claude.model,
+        initialModel,
     );
+
+    configService.onChange('claude.model', (value: unknown) => {
+        const model = resolveModel(value as string | undefined);
+        claudeExecutor.setModel(model);
+        standardsGenerator.setModel(model);
+        logger.info('Claude model changed', { model: model ?? 'default (CLI chooses)' });
+    });
 
     // 10. Start the reviewer service (continuous processing loop)
     const reviewerService = new ReviewerService(

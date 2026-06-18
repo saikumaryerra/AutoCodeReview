@@ -58,8 +58,17 @@ export class CodingStandardsGenerator {
     constructor(
         private readonly cliPath: string,
         private readonly timeoutSeconds: number,
-        private readonly model: string | undefined,
+        private model: string | undefined,
     ) {}
+
+    /**
+     * Updates the model used for subsequent standards generation. Called when
+     * the `claude.model` setting changes at runtime. Pass `undefined` to let
+     * the Claude CLI choose its own default.
+     */
+    setModel(model: string | undefined): void {
+        this.model = model;
+    }
 
     /**
      * Generates coding standards by spawning Claude CLI to analyze the codebase.
