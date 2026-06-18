@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS reviews (
                         CHECK(status IN ('pending', 'in_progress', 'completed', 'failed', 'skipped')),
     error_message       TEXT,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    retry_count         INTEGER NOT NULL DEFAULT 0,
+    next_retry_at       TEXT,
 
     UNIQUE(repo_full_name, pr_number, commit_sha)
 );

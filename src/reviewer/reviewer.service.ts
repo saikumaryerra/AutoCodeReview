@@ -21,6 +21,7 @@ import type { CodingStandardsGenerator } from './coding-standards.generator.js';
 import { STANDARDS_FILENAME } from './coding-standards.generator.js';
 import { buildReviewPrompt } from './prompt.js';
 import { parseClaudeOutput } from './parser.js';
+import { nextRetryTimestamp } from '../poller/retry-policy.js';
 import { formatReviewComment } from './comment-formatter.js';
 import { createModuleLogger } from '../shared/logger.js';
 
@@ -317,30 +318,30 @@ export class ReviewerService {
                 status: cliResult.success ? 'completed' : 'failed',
             });
 
-            if (!cliResult.success) {
+            if (cliResult.success) {
+                // ── Step 13: Mark commit as seen ──────────────────
+                this.insertSeenCommit(job);
+            } else {
                 // Prefer the parsed summary — Claude CLI puts errors in the JSON
                 // envelope (stdout), not stderr. The parser already extracts a
                 // useful reason (auth error, max turns, rate limit, etc.).
                 const stderrTrim = cliResult.stderr.trim();
                 const errorDetail = parsed.summary
                     || (stderrTrim ? `Claude CLI: ${stderrTrim.substring(0, 500)}` : `Claude CLI exited with code ${cliResult.exitCode}`);
-                this.reviewsRepo.updateStatus(reviewId, 'failed', errorDetail);
+                // Marks the commit seen AND schedules a retry (or gives up).
+                this.scheduleRetryOrGiveUp(reviewId, job, errorDetail);
             }
 
-            // ── Step 13: Mark commit as seen ──────────────────────
-            this.insertSeenCommit(job);
-
-            logger.info('Review completed', {
-                ...logCtx,
-                reviewId,
-                severity: parsed.severity,
-                findingsCount: parsed.findings.length,
-                durationMs: cliResult.durationMs,
-                model: parsed.model ?? cliResult.model,
-            });
-
-            // ── Step 14: Auto-post comment (if enabled) ───────────
+            // ── Step 14: Log + auto-post (success only) ───────────
             if (cliResult.success) {
+                logger.info('Review completed', {
+                    ...logCtx,
+                    reviewId,
+                    severity: parsed.severity,
+                    findingsCount: parsed.findings.length,
+                    durationMs: cliResult.durationMs,
+                    model: parsed.model ?? cliResult.model,
+                });
                 await this.maybeAutoPostComment(reviewId, provider, job, parsed, logCtx);
             }
 
@@ -356,8 +357,7 @@ export class ReviewerService {
                 stack: errorStack,
             });
 
-            this.reviewsRepo.updateStatus(reviewId, 'failed', errorMessage.substring(0, 2000));
-            this.insertSeenCommit(job);
+            this.scheduleRetryOrGiveUp(reviewId, job, errorMessage.substring(0, 2000));
         } finally {
             // ── Step 14: Clear current review ─────────────────────
             this.currentReview = null;
@@ -406,6 +406,46 @@ export class ReviewerService {
     }
 
     // ── Private helpers ───────────────────────────────────────────
+
+    /**
+     * Records a failed attempt. Marks the commit seen (keeping the poller out),
+     * then either schedules the next retry with exponential backoff or, once the
+     * attempt cap is reached / retries are disabled, gives up permanently.
+     */
+    private scheduleRetryOrGiveUp(reviewId: string, job: ReviewJob, errorDetail: string): void {
+        this.insertSeenCommit(job);
+
+        try {
+            const retryEnabled = this.configService.get<boolean>('review.retryEnabled');
+            const maxAttempts = this.configService.get<number>('review.maxRetryAttempts');
+            const currentRetries = this.reviewsRepo.getRetryCount(reviewId);
+
+            if (retryEnabled && currentRetries < maxAttempts - 1) {
+                const nextRetry = currentRetries + 1;
+                const nextRetryAt = nextRetryTimestamp(nextRetry, new Date());
+                this.reviewsRepo.scheduleRetry(reviewId, nextRetry, nextRetryAt, errorDetail);
+                logger.info('Review failed; retry scheduled', {
+                    reviewId,
+                    nextAttempt: nextRetry + 1,
+                    maxAttempts,
+                    nextRetryAt,
+                });
+            } else {
+                this.reviewsRepo.markFailedFinal(reviewId, errorDetail);
+                logger.info('Review failed permanently', {
+                    reviewId,
+                    attempts: currentRetries + 1,
+                    maxAttempts,
+                    retryEnabled,
+                });
+            }
+        } catch (err) {
+            logger.error('Failed to record retry state', {
+                reviewId,
+                error: (err as Error).message,
+            });
+        }
+    }
 
     /**
      * Inserts a record into seen_commits so the poller does not re-enqueue
