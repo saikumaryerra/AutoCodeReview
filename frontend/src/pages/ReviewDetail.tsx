@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, GitCommit, GitBranch, User, Clock, FileCode, Download, MessageSquarePlus } from 'lucide-react';
+import { ArrowLeft, GitCommit, GitBranch, User, Clock, FileCode, Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useReview } from '../hooks/useReviews';
 import { reviewsApi } from '../api/client';
@@ -18,6 +18,32 @@ export function ReviewDetail() {
   const { data: review, isLoading, error, refetch } = useReview(id ?? '');
   const [posting, setPosting] = useState(false);
   const [postResult, setPostResult] = useState<{ ok: boolean; message: string; url?: string | null } | null>(null);
+  const [reReviewing, setReReviewing] = useState(false);
+
+  const isInFlight = review?.status === 'pending' || review?.status === 'in_progress';
+
+  const handleReReview = async () => {
+    if (!review || reReviewing || isInFlight) return;
+    setReReviewing(true);
+    setPostResult(null);
+    try {
+      await reviewsApi.trigger({
+        repo_full_name: review.repo_full_name,
+        pr_number: review.pr_number,
+        commit_sha: review.commit_sha,
+        force: true,
+      });
+      setPostResult({ ok: true, message: 'Re-review queued' });
+      await refetch();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        ?? (err as Error).message
+        ?? 'Failed to queue re-review';
+      setPostResult({ ok: false, message: msg });
+    } finally {
+      setReReviewing(false);
+    }
+  };
 
   const handlePostComment = async () => {
     if (!review) return;
@@ -126,6 +152,15 @@ export function ReviewDetail() {
             <PrStateBadge state={review.pr_state} className="text-sm px-3 py-1" />
             <StatusBadge status={review.status} className="text-sm px-3 py-1" />
             <SeverityBadge severity={review.severity} className="text-sm px-3 py-1" />
+            <button
+              onClick={handleReReview}
+              disabled={reReviewing || isInFlight}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed"
+              title={isInFlight ? 'Review already in progress' : 'Re-review this commit'}
+            >
+              <RefreshCw className={`h-4 w-4 ${reReviewing ? 'animate-spin' : ''}`} />
+              {reReviewing ? 'Queuing…' : 'Re-review'}
+            </button>
             <button
               onClick={() => downloadReviewReport(review)}
               className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
