@@ -335,7 +335,7 @@ function CodingStandardsPanel({ repoId, onClose }: { repoId: string; onClose: ()
 
   return (
     <tr>
-      <td colSpan={6} className="p-0">
+      <td colSpan={8} className="p-0">
         <div className="border-t border-indigo-100 bg-indigo-50/30 p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-gray-800">Coding Standards</h4>
