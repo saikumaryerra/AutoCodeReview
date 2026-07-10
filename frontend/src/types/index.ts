@@ -181,8 +181,11 @@ export interface SettingItem {
   description: string;
   category: string;
   type: 'number' | 'boolean' | 'string' | 'enum';
-  current_value: string | number | boolean;
-  default_value: string | number | boolean;
+  /** Always null for sensitive keys — the API never returns secrets. */
+  current_value: string | number | boolean | null;
+  default_value: string | number | boolean | null;
+  /** Whether a value is configured. The only signal available for secrets. */
+  is_set: boolean;
   is_overridden: boolean;
   editable: boolean;
   requires_restart: boolean;
