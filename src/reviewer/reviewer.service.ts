@@ -122,6 +122,10 @@ export class ReviewerService {
 
         logger.info('Processing review job', logCtx);
 
+        // Resolve the repo UUID once so per-repo setting overrides apply.
+        // Undefined if the repo row was deleted -> settings fall back to global.
+        const repoId = this.reposRepo.getByFullName(job.repoFullName)?.id;
+
         // ── Step 1: Check for duplicate ───────────────────────────
         // If a review already exists for this (repo, pr, commit) and is not
         // pending, skip to avoid re-processing after reconciliation + poller
@@ -242,8 +246,8 @@ export class ReviewerService {
             }
 
             // ── Step 7: Check skip conditions ─────────────────────
-            const maxFilesChanged = this.configService.get<number>('review.maxFilesChanged');
-            const maxDiffSize = this.configService.get<number>('review.maxDiffSize');
+            const maxFilesChanged = this.configService.get<number>('review.maxFilesChanged', repoId);
+            const maxDiffSize = this.configService.get<number>('review.maxDiffSize', repoId);
 
             if (changedFiles.length > maxFilesChanged) {
                 logger.info('Skipping review: too many files changed', {
@@ -329,7 +333,7 @@ export class ReviewerService {
                 const errorDetail = parsed.summary
                     || (stderrTrim ? `Claude CLI: ${stderrTrim.substring(0, 500)}` : `Claude CLI exited with code ${cliResult.exitCode}`);
                 // Marks the commit seen AND schedules a retry (or gives up).
-                this.scheduleRetryOrGiveUp(reviewId, job, errorDetail);
+                this.scheduleRetryOrGiveUp(reviewId, job, errorDetail, repoId);
             }
 
             // ── Step 14: Log + auto-post (success only) ───────────
@@ -342,7 +346,7 @@ export class ReviewerService {
                     durationMs: cliResult.durationMs,
                     model: parsed.model ?? cliResult.model,
                 });
-                await this.maybeAutoPostComment(reviewId, provider, job, parsed, logCtx);
+                await this.maybeAutoPostComment(reviewId, provider, job, parsed, logCtx, repoId);
             }
 
         } catch (err) {
@@ -357,7 +361,7 @@ export class ReviewerService {
                 stack: errorStack,
             });
 
-            this.scheduleRetryOrGiveUp(reviewId, job, errorMessage.substring(0, 2000));
+            this.scheduleRetryOrGiveUp(reviewId, job, errorMessage.substring(0, 2000), repoId);
         } finally {
             // ── Step 14: Clear current review ─────────────────────
             this.currentReview = null;
@@ -370,11 +374,12 @@ export class ReviewerService {
         job: ReviewJob,
         parsed: { severity: string; findings: unknown[] },
         logCtx: Record<string, unknown>,
+        repoId: string | undefined,
     ): Promise<void> {
-        const enabled = this.configService.get<boolean>('review.autoPostComment');
+        const enabled = this.configService.get<boolean>('review.autoPostComment', repoId);
         if (!enabled) return;
 
-        const skipClean = this.configService.get<boolean>('review.autoPostSkipClean');
+        const skipClean = this.configService.get<boolean>('review.autoPostSkipClean', repoId);
         if (skipClean && parsed.findings.length === 0) {
             logger.info('Auto-post skipped: no findings', { ...logCtx, reviewId });
             return;
@@ -412,12 +417,17 @@ export class ReviewerService {
      * then either schedules the next retry with exponential backoff or, once the
      * attempt cap is reached / retries are disabled, gives up permanently.
      */
-    private scheduleRetryOrGiveUp(reviewId: string, job: ReviewJob, errorDetail: string): void {
+    private scheduleRetryOrGiveUp(
+        reviewId: string,
+        job: ReviewJob,
+        errorDetail: string,
+        repoId: string | undefined,
+    ): void {
         this.insertSeenCommit(job);
 
         try {
-            const retryEnabled = this.configService.get<boolean>('review.retryEnabled');
-            const maxAttempts = this.configService.get<number>('review.maxRetryAttempts');
+            const retryEnabled = this.configService.get<boolean>('review.retryEnabled', repoId);
+            const maxAttempts = this.configService.get<number>('review.maxRetryAttempts', repoId);
             const currentRetries = this.reviewsRepo.getRetryCount(reviewId);
 
             if (retryEnabled && currentRetries < maxAttempts - 1) {
