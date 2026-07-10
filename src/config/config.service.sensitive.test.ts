@@ -12,6 +12,7 @@ const ENV_CONFIG = {
     github: { token: SECRET },
     azureDevOps: { token: undefined },
     claude: { model: undefined },
+    polling: { intervalSeconds: 3600 },
 } as unknown as AppConfig;
 
 function makeService(): ConfigService {
@@ -76,5 +77,27 @@ describe('ConfigService — sensitive values are never returned', () => {
             expect(meta!.requires_restart, key).toBe(true);
             expect(meta!.sensitive, key).toBe(true);
         }
+    });
+
+    it('refuses to reset a non-editable token, so its value is never returned', () => {
+        expect(() => service.reset('github.token')).toThrow(/not editable at runtime/);
+        expect(() => service.reset('azureDevOps.token')).toThrow(/not editable at runtime/);
+    });
+
+    it('refuses to reset an unknown key instead of silently succeeding', () => {
+        expect(() => service.reset('totally.bogus.key')).toThrow(/Setting/);
+    });
+
+    it('still resets a normal editable key and returns its values', () => {
+        service.set('polling.intervalSeconds', 120);
+        const { previousValue, restoredValue } = service.reset('polling.intervalSeconds');
+        expect(previousValue).toBe(120);
+        expect(restoredValue).toBe(3600);
+    });
+
+    it('exposes isSensitive() for the routes to consult', () => {
+        expect(service.isSensitive('github.token')).toBe(true);
+        expect(service.isSensitive('polling.intervalSeconds')).toBe(false);
+        expect(service.isSensitive('nonexistent.key')).toBe(false);
     });
 });
