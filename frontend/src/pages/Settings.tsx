@@ -197,7 +197,7 @@ interface SettingFieldProps {
 }
 
 function SettingField({ setting, editValue, onChange, onReset }: SettingFieldProps) {
-  const currentVal = editValue !== undefined ? editValue : setting.current_value;
+  const currentVal = editValue !== undefined ? editValue : (setting.current_value ?? '');
 
   return (
     <div className="flex items-start gap-4">
@@ -218,15 +218,21 @@ function SettingField({ setting, editValue, onChange, onReset }: SettingFieldPro
         <div className="mt-2">
           {!setting.editable ? (
             <span className="inline-block rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-600 font-mono">
-              {setting.current_value == null || setting.current_value === '' || String(setting.current_value) === 'undefined'
-                ? 'Not set'
-                : String(setting.current_value)}
+              {setting.sensitive
+                ? setting.is_set
+                  ? 'Set — configure via .env'
+                  : 'Not set'
+                : setting.current_value == null || setting.current_value === ''
+                  ? 'Not set'
+                  : String(setting.current_value)}
             </span>
           ) : setting.sensitive ? (
+            // Never seed a secret input from server state — the API does not
+            // return secrets, and a placeholder must never be persisted.
             <input
               type="password"
-              value={String(currentVal ?? '')}
-              placeholder="Enter new value"
+              value={String(editValue ?? '')}
+              placeholder={setting.is_set ? 'Set — enter a new value to replace' : 'Enter new value'}
               onChange={(e) => onChange(e.target.value)}
               className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
