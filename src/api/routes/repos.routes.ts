@@ -408,6 +408,7 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
         asyncHandler(async (req, res) => {
             const { id, key } = req.params;
             if (!repoExists(id)) throw new NotFoundError('Repository', id);
+            if (!configService.isRepoOverridable(key)) throw new NotFoundError('Setting', key);
             configService.resetForRepo(id, key);
             logger.info('Repo setting reset to global', { repoId: id, key });
             res.json({ data: { key, is_overridden: false, effective_value: configService.get(key) } });

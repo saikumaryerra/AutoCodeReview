@@ -63,10 +63,17 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Router {
 
             for (const [key, value] of Object.entries(settings)) {
                 try {
+                    const sensitive = configService.isSensitive(key);
                     const oldValue = configService.get(key);
                     configService.set(key, value, 'ui');
-                    applied.push({ key, old_value: oldValue, new_value: value });
-                    logger.info('Setting applied', { key, old_value: oldValue, new_value: value });
+                    applied.push({
+                        key,
+                        old_value: sensitive ? null : oldValue,
+                        new_value: sensitive ? null : value,
+                    });
+                    logger.info('Setting applied', sensitive
+                        ? { key }
+                        : { key, old_value: oldValue, new_value: value });
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
                     rejected.push({ key, error: message });
@@ -88,7 +95,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Router {
 
             const { previousValue, restoredValue } = configService.reset(key);
 
-            logger.info('Setting reset', { key, previousValue, restoredValue });
+            logger.info('Setting reset', { key });
 
             res.json({
                 data: {

@@ -3,7 +3,7 @@ import { CONFIG_REGISTRY } from './config.schema.js';
 import type { SettingsRepository } from '../database/settings.repository.js';
 import type { RepoSettingsRepository } from '../database/repo-settings.repository.js';
 import { createModuleLogger } from '../shared/logger.js';
-import { ValidationError } from '../shared/errors.js';
+import { NotFoundError, ValidationError } from '../shared/errors.js';
 
 const logger = createModuleLogger('config-service');
 
@@ -40,6 +40,10 @@ export class ConfigService {
 
     isRepoOverridable(key: string): boolean {
         return CONFIG_REGISTRY.some(m => m.key === key && m.perRepoOverridable === true);
+    }
+
+    isSensitive(key: string): boolean {
+        return CONFIG_REGISTRY.some(m => m.key === key && m.sensitive === true);
     }
 
     get<T>(key: string, repoId?: string): T {
@@ -89,6 +93,17 @@ export class ConfigService {
     }
 
     reset(key: string): { previousValue: unknown; restoredValue: unknown } {
+        const meta = CONFIG_REGISTRY.find(m => m.key === key);
+        if (!meta) throw new NotFoundError('Setting', key);
+        if (!meta.editable) {
+            throw new ValidationError(`Config key ${key} is not editable at runtime`);
+        }
+        // A secret must never round-trip through an API response, and reset
+        // returns the value it restored. Refuse rather than redact.
+        if (meta.sensitive) {
+            throw new ValidationError(`Config key ${key} is a secret and cannot be reset via the API`);
+        }
+
         const previousValue = this.get(key);
         this.settingsRepo.delete(key);
         this.invalidateKeyAllScopes(key);
