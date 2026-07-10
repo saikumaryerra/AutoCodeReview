@@ -93,4 +93,14 @@ describe('ConfigService — per-repo resolution', () => {
         expect(sd.repo_value).toBeNull();
         expect(sd.effective_value).toBe(true);
     });
+
+    it('getAllForRepo includes numeric bounds from the Zod schema', () => {
+        const items = svc.getAllForRepo(REPO);
+        const mf = items.find(i => i.key === 'review.maxFilesChanged')!;
+        expect(mf.min).toBe(1);
+        expect(mf.max).toBe(500);
+        const sd = items.find(i => i.key === 'review.skipDrafts')!;
+        expect(sd.min).toBeNull();
+        expect(sd.max).toBeNull();
+    });
 });
