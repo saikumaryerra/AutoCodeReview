@@ -1,7 +1,7 @@
 /**
  * SQLite schema definition for AutoCodeReview.
  *
- * Four tables: repositories, reviews, seen_commits, settings.
+ * Five tables: repositories, reviews, seen_commits, settings, repo_settings.
  * All timestamps are ISO-8601 TEXT columns using SQLite's datetime('now').
  * JSON data (findings, files_reviewed, stats) is stored as TEXT and
  * parsed/serialized at the repository layer boundary.
@@ -87,6 +87,16 @@ CREATE TABLE IF NOT EXISTS settings (
     value           TEXT NOT NULL,
     updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by      TEXT NOT NULL DEFAULT 'system'
+);
+
+-- ── Per-repo setting overrides ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS repo_settings (
+    repo_id     TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by  TEXT NOT NULL DEFAULT 'ui',
+    PRIMARY KEY (repo_id, key)
 );
 `;
 }

@@ -1,9 +1,28 @@
 import type { AppConfig } from './config.js';
 import { CONFIG_REGISTRY } from './config.schema.js';
 import type { SettingsRepository } from '../database/settings.repository.js';
+import type { RepoSettingsRepository } from '../database/repo-settings.repository.js';
 import { createModuleLogger } from '../shared/logger.js';
+import { ValidationError } from '../shared/errors.js';
 
 const logger = createModuleLogger('config-service');
+
+const GLOBAL_SCOPE = '~global';
+
+export interface RepoSettingItem {
+    key: string;
+    label: string;
+    description: string;
+    category: string;
+    type: string;
+    enumValues?: string[];
+    global_value: unknown;
+    repo_value: unknown;
+    effective_value: unknown;
+    is_overridden: boolean;
+    min: number | null;
+    max: number | null;
+}
 
 export class ConfigService {
     private cache: Map<string, unknown> = new Map();
@@ -11,23 +30,45 @@ export class ConfigService {
 
     constructor(
         private settingsRepo: SettingsRepository,
-        private envConfig: AppConfig
+        private envConfig: AppConfig,
+        private repoSettingsRepo: RepoSettingsRepository,
     ) {}
 
-    get<T>(key: string): T {
-        if (this.cache.has(key)) {
-            return this.cache.get(key) as T;
+    private scopeKey(key: string, repoId?: string): string {
+        return `${repoId ?? GLOBAL_SCOPE}:${key}`;
+    }
+
+    isRepoOverridable(key: string): boolean {
+        return CONFIG_REGISTRY.some(m => m.key === key && m.perRepoOverridable === true);
+    }
+
+    get<T>(key: string, repoId?: string): T {
+        const ck = this.scopeKey(key, repoId);
+        if (this.cache.has(ck)) {
+            return this.cache.get(ck) as T;
         }
 
+        // Tier 1: repo override (only when scoped to a repo AND key is overridable)
+        if (repoId !== undefined && this.isRepoOverridable(key)) {
+            const repoRow = this.repoSettingsRepo.get(repoId, key);
+            if (repoRow !== null) {
+                const parsed = JSON.parse(repoRow.value);
+                this.cache.set(ck, parsed);
+                return parsed as T;
+            }
+        }
+
+        // Tier 2: global override
         const dbValue = this.settingsRepo.get(key);
         if (dbValue !== null) {
             const parsed = JSON.parse(dbValue.value);
-            this.cache.set(key, parsed);
+            this.cache.set(ck, parsed);
             return parsed as T;
         }
 
+        // Tier 3: env default
         const envValue = this.resolveEnvKey(key);
-        this.cache.set(key, envValue);
+        this.cache.set(ck, envValue);
         return envValue as T;
     }
 
@@ -42,17 +83,73 @@ export class ConfigService {
         }
 
         this.settingsRepo.upsert(key, JSON.stringify(value), updatedBy);
-        this.cache.delete(key);
+        // A global change affects every scope that inherits this key.
+        this.invalidateKeyAllScopes(key);
         this.notifyListeners(key, value);
     }
 
     reset(key: string): { previousValue: unknown; restoredValue: unknown } {
         const previousValue = this.get(key);
         this.settingsRepo.delete(key);
-        this.cache.delete(key);
+        this.invalidateKeyAllScopes(key);
         const restoredValue = this.resolveEnvKey(key);
         this.notifyListeners(key, restoredValue);
         return { previousValue, restoredValue };
+    }
+
+    setForRepo(repoId: string, key: string, value: unknown, updatedBy: string = 'ui'): void {
+        const meta = CONFIG_REGISTRY.find(m => m.key === key);
+        if (!meta) throw new Error(`Unknown config key: ${key}`);
+        if (meta.perRepoOverridable !== true) {
+            throw new Error(`Config key ${key} is not overridable per-repo`);
+        }
+        const result = meta.validation.safeParse(value);
+        if (!result.success) {
+            throw new ValidationError(`Invalid value for ${key}: ${result.error.message}`);
+        }
+        this.repoSettingsRepo.upsert(repoId, key, JSON.stringify(value), updatedBy);
+        this.cache.delete(this.scopeKey(key, repoId));
+    }
+
+    resetForRepo(repoId: string, key: string): void {
+        this.repoSettingsRepo.delete(repoId, key);
+        this.cache.delete(this.scopeKey(key, repoId));
+    }
+
+    resetAllForRepo(repoId: string): void {
+        this.repoSettingsRepo.deleteAllForRepo(repoId);
+        const prefix = `${repoId}:`;
+        for (const ck of Array.from(this.cache.keys())) {
+            if (ck.startsWith(prefix)) this.cache.delete(ck);
+        }
+    }
+
+    getAllForRepo(repoId: string): RepoSettingItem[] {
+        return CONFIG_REGISTRY
+            .filter(m => m.perRepoOverridable === true)
+            .map(meta => {
+                const globalValue = this.get(meta.key) ?? meta.default;
+                const repoRow = this.repoSettingsRepo.get(repoId, meta.key);
+                const isOverridden = repoRow !== null;
+                const repoValue = isOverridden ? JSON.parse(repoRow.value) : null;
+                const numeric = meta.type === 'number'
+                    ? (meta.validation as { minValue?: number | null; maxValue?: number | null })
+                    : undefined;
+                return {
+                    key: meta.key,
+                    label: meta.label,
+                    description: meta.description,
+                    category: meta.category,
+                    type: meta.type,
+                    enumValues: meta.enumValues,
+                    global_value: globalValue,
+                    repo_value: repoValue,
+                    effective_value: isOverridden ? repoValue : globalValue,
+                    is_overridden: isOverridden,
+                    min: numeric && typeof numeric.minValue === 'number' ? numeric.minValue : null,
+                    max: numeric && typeof numeric.maxValue === 'number' ? numeric.maxValue : null,
+                };
+            });
     }
 
     getAll(): Array<{
@@ -109,6 +206,13 @@ export class ConfigService {
         const list = this.listeners.get(key) || [];
         list.push(callback);
         this.listeners.set(key, list);
+    }
+
+    private invalidateKeyAllScopes(key: string): void {
+        const suffix = `:${key}`;
+        for (const ck of Array.from(this.cache.keys())) {
+            if (ck.endsWith(suffix)) this.cache.delete(ck);
+        }
     }
 
     private notifyListeners(key: string, value: unknown): void {

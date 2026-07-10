@@ -10,6 +10,7 @@ import type {
   PRListItem,
   PRListParams,
   Repository,
+  RepoSettingItem,
   SettingItem,
   SettingsUpdateResult,
   SystemStatus,
@@ -70,6 +71,18 @@ export const reposApi = {
     api.put<ApiResponse<{ repo_full_name: string; coding_standards: string }>>(`/repos/${id}/coding-standards`, { coding_standards }),
   regenerateStandards: (id: string) =>
     api.post<ApiResponse<{ repo_full_name: string; coding_standards: string }>>(`/repos/${id}/coding-standards/regenerate`),
+  getSettings: (id: string) =>
+    api.get<ApiResponse<RepoSettingItem[]>>(`/repos/${id}/settings`),
+  setSetting: (id: string, key: string, value: unknown) =>
+    api.put<ApiResponse<{ key: string; repo_value: unknown; effective_value: unknown; is_overridden: boolean }>>(
+      `/repos/${id}/settings/${encodeURIComponent(key)}`, { value },
+    ),
+  resetSetting: (id: string, key: string) =>
+    api.delete<ApiResponse<{ key: string; is_overridden: boolean; effective_value: unknown }>>(
+      `/repos/${id}/settings/${encodeURIComponent(key)}`,
+    ),
+  resetAllSettings: (id: string) =>
+    api.delete<ApiResponse<{ reset: boolean }>>(`/repos/${id}/settings`),
 };
 
 export const settingsApi = {

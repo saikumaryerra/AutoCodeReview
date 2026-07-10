@@ -172,19 +172,20 @@ export class PollerService {
                 };
             }
 
-            const skipDrafts = this.configService.get<boolean>(
-                'review.skipDrafts'
-            );
-            const prStateFilter = this.configService.get<
-                'open' | 'closed' | 'all'
-            >('review.prStateFilter');
-
             for (const repo of activeRepos) {
                 try {
+                    const skipDrafts = this.configService.get<boolean>(
+                        'review.skipDrafts',
+                        repo.id,
+                    );
+                    const prStateFilter = this.configService.get<
+                        'open' | 'closed' | 'all'
+                    >('review.prStateFilter', repo.id);
+
                     const jobsFound = await this.pollSingleRepo(
                         repo,
                         prStateFilter,
-                        skipDrafts
+                        skipDrafts,
                     );
 
                     reposPolled++;
