@@ -80,6 +80,20 @@ async function main() {
     // 5. Create config service (three-tier: repo override > DB global > env default)
     const configService = new ConfigService(settingsRepo, config, repoSettingsRepo);
 
+    // 5b. Purge token rows written by the pre-fix Settings UI. These were
+    // never read by ProviderFactory, so deleting them changes no behavior —
+    // but a real PAT (or a persisted mask) may be sitting in the DB in
+    // plaintext. Tokens now come only from env / the repos table.
+    for (const key of ['github.token', 'azureDevOps.token'] as const) {
+        if (settingsRepo.get(key) !== null) {
+            settingsRepo.delete(key);
+            logger.warn(
+                `Removed stale '${key}' row from the settings table. This value was ` +
+                `never used. Configure the token via the environment instead.`
+            );
+        }
+    }
+
     // 6. Seed repositories from .env config
     const providerFactory = new ProviderFactory(config);
     const configuredRepos = providerFactory.getAllConfiguredRepos();
