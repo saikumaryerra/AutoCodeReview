@@ -57,4 +57,24 @@ describe('ConfigService — sensitive values are never returned', () => {
         expect(meta!.current_value).toBe(3600);
         expect(meta!.is_set).toBe(true);
     });
+
+    it('rejects writes to a token — it is not editable at runtime', () => {
+        expect(() => service.set('github.token', 'ghp_attacker')).toThrow(
+            /not editable at runtime/,
+        );
+        expect(() => service.set('azureDevOps.token', 'pat_attacker')).toThrow(
+            /not editable at runtime/,
+        );
+    });
+
+    it('marks both tokens as non-editable, restart-required', () => {
+        const all = service.getAll();
+        for (const key of ['github.token', 'azureDevOps.token']) {
+            const meta = all.find(s => s.key === key);
+            expect(meta, key).toBeDefined();
+            expect(meta!.editable, key).toBe(false);
+            expect(meta!.requires_restart, key).toBe(true);
+            expect(meta!.sensitive, key).toBe(true);
+        }
+    });
 });
