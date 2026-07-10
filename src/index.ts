@@ -147,9 +147,10 @@ async function main() {
     // survives restarts, then react to runtime changes via configService.
     const repoManager = new RepoManager(config.storage.reposDir);
     const initialModel = resolveModel(configService.get<string>('claude.model'));
+    const initialTimeout = configService.get<number>('claude.reviewTimeoutSeconds');
     const claudeExecutor = new ClaudeCliExecutor(
         config.claude.cliPath,
-        config.claude.reviewTimeoutSeconds,
+        initialTimeout,
         initialModel
     );
     const standardsGenerator = new CodingStandardsGenerator(
@@ -163,6 +164,12 @@ async function main() {
         claudeExecutor.setModel(model);
         standardsGenerator.setModel(model);
         logger.info('Claude model changed', { model: model ?? 'default (CLI chooses)' });
+    });
+
+    configService.onChange('claude.reviewTimeoutSeconds', (value: unknown) => {
+        const seconds = value as number;
+        claudeExecutor.setTimeoutSeconds(seconds);
+        logger.info('Claude review timeout changed', { timeoutSeconds: seconds });
     });
 
     // 10. Start the reviewer service (continuous processing loop)
