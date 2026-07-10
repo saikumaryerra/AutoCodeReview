@@ -161,6 +161,7 @@ export class ConfigService {
         enumValues?: string[];
         current_value: unknown;
         default_value: unknown;
+        is_set: boolean;
         is_overridden: boolean;
         editable: boolean;
         requires_restart: boolean;
@@ -169,35 +170,39 @@ export class ConfigService {
         return CONFIG_REGISTRY.map(meta => {
             const dbValue = this.settingsRepo.get(meta.key);
             const envValue = this.resolveEnvKey(meta.key);
-            let currentValue: unknown;
+            const rawCurrent = dbValue !== null ? JSON.parse(dbValue.value) : envValue;
 
-            if (dbValue !== null) {
-                currentValue = JSON.parse(dbValue.value);
-            } else {
-                currentValue = envValue;
-            }
-
-            if (meta.sensitive && typeof currentValue === 'string' && currentValue.length > 8) {
-                currentValue = currentValue.substring(0, 4) + '****' + currentValue.slice(-4);
-            }
-
-            const defaultDisplay = meta.sensitive && typeof envValue === 'string' && envValue.length > 8
-                ? envValue.substring(0, 4) + '****' + envValue.slice(-4)
-                : envValue;
-
-            return {
+            const common = {
                 key: meta.key,
                 label: meta.label,
                 description: meta.description,
                 category: meta.category,
                 type: meta.type,
                 enumValues: meta.enumValues,
-                current_value: currentValue ?? meta.default,
-                default_value: defaultDisplay ?? meta.default,
                 is_overridden: dbValue !== null,
                 editable: meta.editable,
                 requires_restart: meta.requiresRestart,
                 sensitive: meta.sensitive,
+            };
+
+            // Secrets are never returned over the API — not even masked. The
+            // API is unauthenticated; the UI only needs to know whether a
+            // credential is configured, never what it is.
+            if (meta.sensitive) {
+                return {
+                    ...common,
+                    current_value: null,
+                    default_value: null,
+                    is_set: typeof rawCurrent === 'string' && rawCurrent.length > 0,
+                };
+            }
+
+            const currentValue = rawCurrent ?? meta.default;
+            return {
+                ...common,
+                current_value: currentValue,
+                default_value: envValue ?? meta.default,
+                is_set: currentValue !== undefined && currentValue !== null,
             };
         });
     }
