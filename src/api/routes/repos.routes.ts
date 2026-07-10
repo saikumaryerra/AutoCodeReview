@@ -8,6 +8,7 @@ import type Database from 'better-sqlite3';
 import type { Provider } from '../../shared/types.js';
 import type { RepoManager } from '../../reviewer/repo-manager.js';
 import type { CodingStandardsGenerator } from '../../reviewer/coding-standards.generator.js';
+import type { ConfigService } from '../../config/config.service.js';
 
 const logger = createModuleLogger('repos-routes');
 
@@ -74,6 +75,8 @@ const UpdateStandardsBodySchema = z.object({
     coding_standards: z.string().min(1),
 });
 
+const SetRepoSettingBodySchema = z.object({ value: z.unknown() });
+
 export interface ReposRouterDeps {
     db: Database.Database;
     providerFactory: {
@@ -84,6 +87,7 @@ export interface ReposRouterDeps {
     };
     repoManager: RepoManager;
     standardsGenerator: CodingStandardsGenerator;
+    configService: ConfigService;
 }
 
 // ── Router factory ────────────────────────────────────────────────
@@ -91,6 +95,11 @@ export interface ReposRouterDeps {
 export function createReposRouter(deps: ReposRouterDeps): Router {
     const router = Router();
     const db = deps.db;
+    const configService = deps.configService;
+
+    function repoExists(id: string): boolean {
+        return db.prepare('SELECT 1 FROM repositories WHERE id = ?').get(id) !== undefined;
+    }
 
     // GET / — List all tracked repos with review_count
     router.get(
@@ -365,6 +374,75 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
                     coding_standards: standards,
                 },
             });
+        })
+    );
+
+    // GET /:id/settings — overridable review settings for a repo
+    router.get(
+        '/:id/settings',
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+            if (!repoExists(id)) {
+                res.status(404).json({ error: { message: `Repository ${id} not found` } });
+                return;
+            }
+            res.json({ data: configService.getAllForRepo(id) });
+        })
+    );
+
+    // PUT /:id/settings/:key — set one override
+    router.put(
+        '/:id/settings/:key',
+        validate(SetRepoSettingBodySchema),
+        asyncHandler(async (req, res) => {
+            const { id, key } = req.params;
+            const { value } = req.body as { value: unknown };
+            if (!repoExists(id)) {
+                res.status(404).json({ error: { message: `Repository ${id} not found` } });
+                return;
+            }
+            if (!configService.isRepoOverridable(key)) {
+                res.status(404).json({ error: { message: `Setting ${key} is not overridable per-repo` } });
+                return;
+            }
+            try {
+                configService.setForRepo(id, key, value, 'ui');
+            } catch (err) {
+                res.status(400).json({ error: { message: (err as Error).message } });
+                return;
+            }
+            logger.info('Repo setting overridden', { repoId: id, key });
+            res.json({ data: { key, repo_value: value, effective_value: value, is_overridden: true } });
+        })
+    );
+
+    // DELETE /:id/settings/:key — clear one override (revert to global)
+    router.delete(
+        '/:id/settings/:key',
+        asyncHandler(async (req, res) => {
+            const { id, key } = req.params;
+            if (!repoExists(id)) {
+                res.status(404).json({ error: { message: `Repository ${id} not found` } });
+                return;
+            }
+            configService.resetForRepo(id, key);
+            logger.info('Repo setting reset to global', { repoId: id, key });
+            res.json({ data: { key, is_overridden: false, effective_value: configService.get(key) } });
+        })
+    );
+
+    // DELETE /:id/settings — clear all overrides for a repo
+    router.delete(
+        '/:id/settings',
+        asyncHandler(async (req, res) => {
+            const { id } = req.params;
+            if (!repoExists(id)) {
+                res.status(404).json({ error: { message: `Repository ${id} not found` } });
+                return;
+            }
+            configService.resetAllForRepo(id);
+            logger.info('All repo settings reset to global', { repoId: id });
+            res.json({ data: { reset: true } });
         })
     );
 
