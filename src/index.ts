@@ -184,7 +184,9 @@ async function main() {
         reposRepo,
         standardsGenerator,
     );
-    reviewerService.startProcessing(); // runs in background (not awaited)
+    const processingLoop = reviewerService.startProcessing().catch(err => {
+        logger.error('Review processing loop crashed', { error: err });
+    });
     logger.info('Reviewer service started');
 
     // 11. Start the poller service
@@ -299,17 +301,45 @@ async function main() {
     logger.info(`System running. Tracking ${totalRepos} repo(s), polling every ${config.polling.intervalSeconds}s.`);
     logger.info(`API server at http://localhost:${config.server.apiPort}`);
 
-    // Graceful shutdown
-    const shutdown = () => {
+    // Graceful shutdown. Stop feeding the queue, let the in-flight review
+    // finish, then close the DB. If the drain times out we exit WITHOUT
+    // closing: SQLite is crash-safe, and closing a handle out from under an
+    // in-flight write is exactly the failure we are avoiding. Startup
+    // reconciliation re-enqueues anything left in `in_progress`.
+    const DRAIN_TIMEOUT_MS = 10_000;
+    let shuttingDown = false;
+
+    const shutdown = async () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+
         logger.info('Shutting down...');
         retryScheduler.stop();
         pollerService.stop();
-        db.close();
+        reviewerService.stop();
+
+        const drained = await Promise.race([
+            processingLoop.then(() => true),
+            new Promise<boolean>(resolve => {
+                setTimeout(() => resolve(false), DRAIN_TIMEOUT_MS).unref();
+            }),
+        ]);
+
+        if (drained) {
+            db.close();
+            logger.info('Shutdown complete');
+        } else {
+            logger.warn(
+                `Review still in flight after ${DRAIN_TIMEOUT_MS}ms; exiting without ` +
+                `closing the database. It will be reconciled on next startup.`
+            );
+        }
+
         process.exit(0);
     };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', () => { void shutdown(); });
+    process.on('SIGINT', () => { void shutdown(); });
 }
 
 main().catch(err => {
