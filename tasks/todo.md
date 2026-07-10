@@ -31,7 +31,11 @@ The working tree has **unrelated uncommitted changes** in `src/reviewer/repo-man
 3. The masked sensitive value seeds the Settings input and can be persisted as a credential.
 4. `ReviewerService.startProcessing()` is an unstoppable `while (true)`; `shutdown()` calls `db.close()` under it.
 
-**Explicitly out of scope** (identified but not fixed here): `POST /api/settings/:key/reset` accepting unknown keys, `ConfigService.set()` throwing bare `Error` instead of `ValidationError`, the cleanup cron's comment/schedule/log disagreement, `requires_restart` never rendering in the UI, `CLAUDE_STANDARDS_TIMEOUT_SECONDS` being undocumented, and `retentionDays`' `??`-vs-`||` coercion.
+**Added mid-execution (Task 2b), after the Task 1 review found them and they were reproduced:**
+5. `DELETE /api/repos/:id/settings/:key` returns `configService.get(key)` with no `isRepoOverridable` guard — so it returns the raw PAT in cleartext for `github.token`.
+6. `POST /api/settings/:key/reset` returns `previous_value` / `restored_value` raw for any key, and logs them. Same cleartext PAT leak, plus secrets in Winston logs.
+
+**Explicitly out of scope** (identified but not fixed here): `ConfigService.set()` throwing bare `Error` instead of `ValidationError`, the cleanup cron's comment/schedule/log disagreement, `requires_restart` never rendering in the UI, `CLAUDE_STANDARDS_TIMEOUT_SECONDS` being undocumented, and `retentionDays`' `??`-vs-`||` coercion.
 
 ---
 
@@ -317,6 +321,194 @@ Expected: PASS, including the two new tests.
 ```bash
 git add src/config/config.schema.ts src/index.ts src/config/config.service.sensitive.test.ts
 git commit -m "fix(config): make provider tokens non-editable and purge stale rows"
+```
+
+---
+
+### Task 2b: Close the two cleartext-PAT endpoints
+
+Added mid-execution. Both were reproduced against the real `ConfigService`: `DELETE /api/repos/:id/settings/github.token` returns `{"effective_value":"ghp_…"}`, and `POST /api/settings/github.token/reset` returns the PAT as both `previous_value` and `restored_value` while also writing it to the Winston log. The API has no authentication.
+
+Both fixes are guards that the sibling code paths already have and these two forgot: `PUT /:id/settings/:key` checks `isRepoOverridable` and `DELETE` does not; `set()` checks `editable` and `reset()` does not. Because Task 2 has already made both tokens `editable: false`, adding the `editable` guard to `reset()` closes leak #6, and adding the `isRepoOverridable` guard closes leak #5 (no token key is per-repo overridable).
+
+Ordering: this task MUST run after Task 2. Its tests assert that a token is non-editable.
+
+**Files:**
+- Modify: `src/config/config.service.ts` — add `isSensitive()`, add guards to `reset()`
+- Modify: `src/api/routes/repos.routes.ts:406-415` — the unguarded `DELETE` route
+- Modify: `src/api/routes/settings.routes.ts:61-101` — redact secrets from responses and logs
+- Test: `src/config/config.service.sensitive.test.ts` (extend), `src/api/routes/repos.settings.routes.test.ts` (extend)
+
+**Interfaces:**
+- Consumes: `github.token` / `azureDevOps.token` have `editable: false` (Task 2). `getAll()` returns `is_set` (Task 1).
+- Produces: `ConfigService.isSensitive(key: string): boolean`, mirroring the existing `isRepoOverridable(key: string): boolean`. `ConfigService.reset()` now throws `NotFoundError` for an unknown key and `ValidationError` for a non-editable or sensitive key.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to the `describe` block in `src/config/config.service.sensitive.test.ts`:
+
+```typescript
+    it('refuses to reset a non-editable token, so its value is never returned', () => {
+        expect(() => service.reset('github.token')).toThrow(/not editable at runtime/);
+        expect(() => service.reset('azureDevOps.token')).toThrow(/not editable at runtime/);
+    });
+
+    it('refuses to reset an unknown key instead of silently succeeding', () => {
+        expect(() => service.reset('totally.bogus.key')).toThrow(/Setting/);
+    });
+
+    it('still resets a normal editable key and returns its values', () => {
+        service.set('polling.intervalSeconds', 120);
+        const { previousValue, restoredValue } = service.reset('polling.intervalSeconds');
+        expect(previousValue).toBe(120);
+        expect(restoredValue).toBe(3600);
+    });
+
+    it('exposes isSensitive() for the routes to consult', () => {
+        expect(service.isSensitive('github.token')).toBe(true);
+        expect(service.isSensitive('polling.intervalSeconds')).toBe(false);
+        expect(service.isSensitive('nonexistent.key')).toBe(false);
+    });
+```
+
+Append to the `describe('repos settings routes', ...)` block in `src/api/routes/repos.settings.routes.test.ts`:
+
+```typescript
+    it('DELETE refuses a non-overridable key rather than returning its value', async () => {
+        const res = await request(app).delete('/api/v1/repos/repo-a/settings/github.token');
+        expect(res.status).toBe(404);
+        expect(JSON.stringify(res.body)).not.toContain('ghp_');
+    });
+
+    it('DELETE still clears a real override', async () => {
+        await request(app)
+            .put('/api/v1/repos/repo-a/settings/review.maxFilesChanged')
+            .send({ value: 200 });
+        const res = await request(app)
+            .delete('/api/v1/repos/repo-a/settings/review.maxFilesChanged');
+        expect(res.status).toBe(200);
+        expect(res.body.data.is_overridden).toBe(false);
+        expect(res.body.data.effective_value).toBe(50);
+    });
+```
+
+Note: `makeApp()` in that file builds `ENV_CONFIG` as `{ review: { maxFilesChanged: 50 } }`, so no token is configured there and the 404 fires on the guard, not on a missing value. Add a `github: { token: 'ghp_TESTSECRET' }` key to that file's `ENV_CONFIG` so the `not.toContain('ghp_')` assertion is meaningful — it must be able to fail.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run src/config/config.service.sensitive.test.ts src/api/routes/repos.settings.routes.test.ts`
+Expected: FAIL. `reset()` returns `{previousValue, restoredValue}` instead of throwing; `service.isSensitive is not a function`; the `DELETE` returns 200 with `effective_value: 'ghp_TESTSECRET'`.
+
+- [ ] **Step 3: Guard `reset()` and add `isSensitive()`**
+
+In `src/config/config.service.ts`, widen the error import:
+
+```typescript
+import { NotFoundError, ValidationError } from '../shared/errors.js';
+```
+
+Add `isSensitive()` directly below the existing `isRepoOverridable()`:
+
+```typescript
+    isSensitive(key: string): boolean {
+        return CONFIG_REGISTRY.some(m => m.key === key && m.sensitive === true);
+    }
+```
+
+Replace `reset()` with:
+
+```typescript
+    reset(key: string): { previousValue: unknown; restoredValue: unknown } {
+        const meta = CONFIG_REGISTRY.find(m => m.key === key);
+        if (!meta) throw new NotFoundError('Setting', key);
+        if (!meta.editable) {
+            throw new ValidationError(`Config key ${key} is not editable at runtime`);
+        }
+        // A secret must never round-trip through an API response, and reset
+        // returns the value it restored. Refuse rather than redact.
+        if (meta.sensitive) {
+            throw new ValidationError(`Config key ${key} is a secret and cannot be reset via the API`);
+        }
+
+        const previousValue = this.get(key);
+        this.settingsRepo.delete(key);
+        this.invalidateKeyAllScopes(key);
+        const restoredValue = this.resolveEnvKey(key);
+        this.notifyListeners(key, restoredValue);
+        return { previousValue, restoredValue };
+    }
+```
+
+- [ ] **Step 4: Guard the repo-settings DELETE route**
+
+In `src/api/routes/repos.routes.ts`, add the same guard `PUT` already has at line 398. The route becomes:
+
+```typescript
+    // DELETE /:id/settings/:key — clear one override (revert to global)
+    router.delete(
+        '/:id/settings/:key',
+        asyncHandler(async (req, res) => {
+            const { id, key } = req.params;
+            if (!repoExists(id)) throw new NotFoundError('Repository', id);
+            if (!configService.isRepoOverridable(key)) throw new NotFoundError('Setting', key);
+            configService.resetForRepo(id, key);
+            logger.info('Repo setting reset to global', { repoId: id, key });
+            res.json({ data: { key, is_overridden: false, effective_value: configService.get(key) } });
+        })
+    );
+```
+
+- [ ] **Step 5: Redact secrets from the settings routes' responses and logs**
+
+In `src/api/routes/settings.routes.ts`, replace the body of the `PATCH /` loop (lines 64-75) so a sensitive key never has its value echoed or logged:
+
+```typescript
+            for (const [key, value] of Object.entries(settings)) {
+                try {
+                    const sensitive = configService.isSensitive(key);
+                    const oldValue = configService.get(key);
+                    configService.set(key, value, 'ui');
+                    applied.push({
+                        key,
+                        old_value: sensitive ? null : oldValue,
+                        new_value: sensitive ? null : value,
+                    });
+                    logger.info('Setting applied', sensitive
+                        ? { key }
+                        : { key, old_value: oldValue, new_value: value });
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    rejected.push({ key, error: message });
+                    logger.warn('Setting rejected', { key, error: message });
+                }
+            }
+```
+
+And in the `POST /:key/reset` handler, drop the values from the log line — `reset()` now refuses secrets outright, so the response body is safe, but the log has no reason to carry values:
+
+```typescript
+            const { previousValue, restoredValue } = configService.reset(key);
+
+            logger.info('Setting reset', { key });
+```
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npx vitest run && npx tsc --noEmit`
+Expected: all pass. Two pre-existing tests may assert the old `reset()` behavior for an unknown key or the old log shape — update them to the new contract; do not weaken the guards.
+
+- [ ] **Step 7: Prove both leaks are closed**
+
+Add a temporary check (delete it before committing) or reason from the tests: the `DELETE` route now 404s before reaching `configService.get(key)`, and `reset('github.token')` throws before computing `previousValue`. Confirm with:
+
+Run: `npx vitest run src/api/routes/repos.settings.routes.test.ts -t 'non-overridable'`
+Expected: PASS — status 404, body contains no `ghp_`.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/config/config.service.ts src/api/routes/repos.routes.ts src/api/routes/settings.routes.ts src/config/config.service.sensitive.test.ts src/api/routes/repos.settings.routes.test.ts
+git commit -m "fix(api): close cleartext PAT leaks in repo-settings DELETE and settings reset"
 ```
 
 ---
