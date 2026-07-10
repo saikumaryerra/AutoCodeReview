@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { getSchemaSQL } from '../database/schema.js';
 import { SettingsRepository } from '../database/settings.repository.js';
+import { RepoSettingsRepository } from '../database/repo-settings.repository.js';
 import { ConfigService } from './config.service.js';
 import type { AppConfig } from './config.js';
 
@@ -12,7 +13,11 @@ const ENV_CONFIG = { claude: { model: undefined } } as unknown as AppConfig;
 function makeService(): ConfigService {
     const db = new Database(':memory:');
     db.exec(getSchemaSQL());
-    return new ConfigService(new SettingsRepository(db), ENV_CONFIG);
+    return new ConfigService(
+        new SettingsRepository(db),
+        ENV_CONFIG,
+        new RepoSettingsRepository(db),
+    );
 }
 
 describe('ConfigService — claude.model selection', () => {

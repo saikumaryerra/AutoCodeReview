@@ -22,11 +22,12 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { useStatus } from '../hooks/useStatus';
 import { useSettings, useUpdateSettings, useResetSetting } from '../hooks/useSettings';
 import { useRepos, useAddRepo, useUpdateRepo, useDeleteRepo, useRepoStandards, useUpdateRepoStandards, useRegenerateRepoStandards } from '../hooks/useRepos';
+import { useRepoSettings, useSetRepoSetting, useResetRepoSetting, useResetAllRepoSettings } from '../hooks/useRepoSettings';
 import { pollerApi, cleanupApi } from '../api/client';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
-import type { SettingItem, Provider, CleanupPreview } from '../types';
+import type { SettingItem, Provider, CleanupPreview, RepoSettingItem } from '../types';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -334,7 +335,7 @@ function CodingStandardsPanel({ repoId, onClose }: { repoId: string; onClose: ()
 
   return (
     <tr>
-      <td colSpan={6} className="p-0">
+      <td colSpan={8} className="p-0">
         <div className="border-t border-indigo-100 bg-indigo-50/30 p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-gray-800">Coding Standards</h4>
@@ -452,6 +453,162 @@ function CodingStandardsPanel({ repoId, onClose }: { repoId: string; onClose: ()
   );
 }
 
+const CORE_FILTER_KEYS = [
+  'review.skipDrafts',
+  'review.maxFilesChanged',
+  'review.maxDiffSize',
+  'review.prStateFilter',
+];
+
+function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose: () => void }) {
+  const { data: settings, isLoading, isError } = useRepoSettings(repoId);
+  const setSetting = useSetRepoSetting();
+  const resetSetting = useResetRepoSetting();
+  const resetAll = useResetAllRepoSettings();
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+
+  const fail = (message: string) => ({
+    onError: () => {
+      setToast({ message });
+      setTimeout(() => setToast(null), 5000);
+    },
+  });
+
+  if (isError) {
+    return (
+      <tr>
+        <td colSpan={8} className="p-0">
+          <div className="p-4 text-sm text-red-700 bg-red-50 border-t border-gray-200">
+            Failed to load review settings for this repository.
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  if (isLoading || !settings) {
+    return (
+      <tr>
+        <td colSpan={8} className="p-0">
+          <div className="p-4 text-sm text-gray-500 border-t border-gray-200">Loading review settings…</div>
+        </td>
+      </tr>
+    );
+  }
+
+  const core = settings.filter((s) => CORE_FILTER_KEYS.includes(s.key));
+  const autopost = settings.filter((s) => !CORE_FILTER_KEYS.includes(s.key));
+
+  const renderControl = (s: RepoSettingItem) => {
+    if (!s.is_overridden) {
+      return (
+        <button
+          className="text-xs text-blue-600 hover:underline"
+          onClick={() => setSetting.mutate({ id: repoId, key: s.key, value: s.global_value }, fail(`Failed to override ${s.label}`))}
+        >
+          Override
+        </button>
+      );
+    }
+    const commit = (value: unknown) => setSetting.mutate({ id: repoId, key: s.key, value }, fail(`Failed to update ${s.label}`));
+    if (s.type === 'boolean') {
+      return (
+        <button
+          className={`w-8 h-[18px] rounded-full relative ${s.repo_value ? 'bg-blue-600' : 'bg-gray-400'}`}
+          onClick={() => commit(!s.repo_value)}
+          aria-label={`Toggle ${s.label}`}
+        >
+          <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-all ${s.repo_value ? 'left-4' : 'left-0.5'}`} />
+        </button>
+      );
+    }
+    if (s.type === 'enum') {
+      return (
+        <select
+          className="border border-blue-500 rounded px-2 py-1 text-xs"
+          value={String(s.repo_value)}
+          onChange={(e) => commit(e.target.value)}
+        >
+          {(s.enumValues ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+      );
+    }
+    return (
+      <input
+        type="number"
+        min={s.min ?? undefined}
+        max={s.max ?? undefined}
+        className="border border-blue-500 rounded px-2 py-1 text-xs w-24"
+        defaultValue={Number(s.repo_value)}
+        onBlur={(e) => commit(Number(e.target.value))}
+      />
+    );
+  };
+
+  const row = (s: RepoSettingItem) => (
+    <tr key={s.key} className={s.is_overridden ? 'bg-amber-50' : ''}>
+      <td className="py-2 pr-3">
+        <div className="text-sm text-gray-900">{s.label}</div>
+        <div className="text-xs text-gray-500">{s.description}</div>
+      </td>
+      <td className="py-2 pr-3 text-xs text-gray-400">{String(s.global_value)}</td>
+      <td className="py-2 pr-3">{renderControl(s)}</td>
+      <td className="py-2 pr-3">
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.is_overridden ? 'text-amber-700 bg-amber-100' : 'text-gray-500 border border-gray-200'}`}>
+          {s.is_overridden ? 'OVERRIDDEN' : 'INHERITED'}
+        </span>
+      </td>
+      <td className="py-2 text-right">
+        {s.is_overridden && (
+          <button className="text-xs text-blue-600 hover:underline" onClick={() => resetSetting.mutate({ id: repoId, key: s.key }, fail(`Failed to reset ${s.label}`))}>
+            Reset
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+
+  return (
+    <tr>
+      <td colSpan={8} className="p-0">
+        <div className="p-4 bg-gray-50 border-t border-gray-200">
+          {toast && (
+            <div className="mb-3 rounded p-2 text-xs bg-red-50 text-red-800">{toast.message}</div>
+          )}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-gray-500">Inherited fields follow the global default and track it live.</p>
+            <div className="flex gap-2">
+              <button className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1" onClick={() => resetAll.mutate(repoId, fail('Failed to reset all settings'))}>
+                Reset all to global
+              </button>
+              <button className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1" onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </div>
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="py-1 pr-3 font-semibold">Setting</th>
+                <th className="py-1 pr-3 font-semibold">Global</th>
+                <th className="py-1 pr-3 font-semibold">This repo</th>
+                <th className="py-1 pr-3 font-semibold">Source</th>
+                <th className="py-1"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colSpan={5} className="pt-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Core review filters</td></tr>
+              {core.map(row)}
+              <tr><td colSpan={5} className="pt-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Auto-post &amp; retry</td></tr>
+              {autopost.map(row)}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // --- Tracked Repositories Section ---
 
 function ReposSection() {
@@ -468,6 +625,7 @@ function ReposSection() {
   const [newRepoToken, setNewRepoToken] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [expandedStandardsId, setExpandedStandardsId] = useState<string | null>(null);
+  const [settingsRepoId, setSettingsRepoId] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -629,6 +787,7 @@ function ReposSection() {
                   <th className="pb-2">Last Polled</th>
                   <th className="pb-2">Reviews</th>
                   <th className="pb-2">Standards</th>
+                  <th className="pb-2">Review Settings</th>
                   <th className="pb-2"></th>
                 </tr>
               </thead>
@@ -687,6 +846,14 @@ function ReposSection() {
                       </button>
                     </td>
                     <td className="py-3">
+                      <button
+                        className="text-xs text-gray-600 hover:text-gray-900"
+                        onClick={() => setSettingsRepoId(settingsRepoId === repo.id ? null : repo.id)}
+                      >
+                        Review Settings
+                      </button>
+                    </td>
+                    <td className="py-3">
                       {confirmDeleteId === repo.id ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-red-600">Delete?</span>
@@ -718,6 +885,12 @@ function ReposSection() {
                     <CodingStandardsPanel
                       repoId={repo.id}
                       onClose={() => setExpandedStandardsId(null)}
+                    />
+                  )}
+                  {settingsRepoId === repo.id && (
+                    <RepoReviewSettingsPanel
+                      repoId={repo.id}
+                      onClose={() => setSettingsRepoId(null)}
                     />
                   )}
                   </Fragment>

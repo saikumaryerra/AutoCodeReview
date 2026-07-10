@@ -12,6 +12,8 @@ export interface ConfigKeyMetadata {
     requiresRestart: boolean;
     validation: z.ZodType<unknown>;
     sensitive: boolean;
+    /** When true, each repo may override this key (repo → global → env). Default false. */
+    perRepoOverridable?: boolean;
 }
 
 export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
@@ -50,6 +52,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.boolean(),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.maxFilesChanged',
@@ -62,6 +65,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.number().min(1).max(500),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.maxDiffSize',
@@ -74,6 +78,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.number().min(1000).max(1000000),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.prStateFilter',
@@ -87,6 +92,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.enum(['open', 'closed', 'all']),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.autoPostComment',
@@ -99,6 +105,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.boolean(),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.autoPostSkipClean',
@@ -111,6 +118,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.boolean(),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.retryEnabled',
@@ -123,6 +131,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.boolean(),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'review.maxRetryAttempts',
@@ -135,6 +144,7 @@ export const CONFIG_REGISTRY: ConfigKeyMetadata[] = [
         requiresRestart: false,
         validation: z.number().min(1).max(50),
         sensitive: false,
+        perRepoOverridable: true,
     },
     {
         key: 'claude.reviewTimeoutSeconds',

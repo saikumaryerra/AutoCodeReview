@@ -117,6 +117,7 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
             providerFactory: providerFactory as any,
             repoManager,
             standardsGenerator,
+            configService,
         })
     );
 
