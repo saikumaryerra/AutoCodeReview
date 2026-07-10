@@ -461,10 +461,30 @@ const CORE_FILTER_KEYS = [
 ];
 
 function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose: () => void }) {
-  const { data: settings, isLoading } = useRepoSettings(repoId);
+  const { data: settings, isLoading, isError } = useRepoSettings(repoId);
   const setSetting = useSetRepoSetting();
   const resetSetting = useResetRepoSetting();
   const resetAll = useResetAllRepoSettings();
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+
+  const fail = (message: string) => ({
+    onError: () => {
+      setToast({ message });
+      setTimeout(() => setToast(null), 5000);
+    },
+  });
+
+  if (isError) {
+    return (
+      <tr>
+        <td colSpan={8} className="p-0">
+          <div className="p-4 text-sm text-red-700 bg-red-50 border-t border-gray-200">
+            Failed to load review settings for this repository.
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   if (isLoading || !settings) {
     return (
@@ -484,13 +504,13 @@ function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose:
       return (
         <button
           className="text-xs text-blue-600 hover:underline"
-          onClick={() => setSetting.mutate({ id: repoId, key: s.key, value: s.global_value })}
+          onClick={() => setSetting.mutate({ id: repoId, key: s.key, value: s.global_value }, fail(`Failed to override ${s.label}`))}
         >
           Override
         </button>
       );
     }
-    const commit = (value: unknown) => setSetting.mutate({ id: repoId, key: s.key, value });
+    const commit = (value: unknown) => setSetting.mutate({ id: repoId, key: s.key, value }, fail(`Failed to update ${s.label}`));
     if (s.type === 'boolean') {
       return (
         <button
@@ -516,6 +536,8 @@ function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose:
     return (
       <input
         type="number"
+        min={s.min ?? undefined}
+        max={s.max ?? undefined}
         className="border border-blue-500 rounded px-2 py-1 text-xs w-24"
         defaultValue={Number(s.repo_value)}
         onBlur={(e) => commit(Number(e.target.value))}
@@ -538,7 +560,7 @@ function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose:
       </td>
       <td className="py-2 text-right">
         {s.is_overridden && (
-          <button className="text-xs text-blue-600 hover:underline" onClick={() => resetSetting.mutate({ id: repoId, key: s.key })}>
+          <button className="text-xs text-blue-600 hover:underline" onClick={() => resetSetting.mutate({ id: repoId, key: s.key }, fail(`Failed to reset ${s.label}`))}>
             Reset
           </button>
         )}
@@ -550,10 +572,13 @@ function RepoReviewSettingsPanel({ repoId, onClose }: { repoId: string; onClose:
     <tr>
       <td colSpan={8} className="p-0">
         <div className="p-4 bg-gray-50 border-t border-gray-200">
+          {toast && (
+            <div className="mb-3 rounded p-2 text-xs bg-red-50 text-red-800">{toast.message}</div>
+          )}
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-gray-500">Inherited fields follow the global default and track it live.</p>
             <div className="flex gap-2">
-              <button className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1" onClick={() => resetAll.mutate(repoId)}>
+              <button className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1" onClick={() => resetAll.mutate(repoId, fail('Failed to reset all settings'))}>
                 Reset all to global
               </button>
               <button className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1" onClick={onClose}>

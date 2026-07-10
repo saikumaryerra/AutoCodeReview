@@ -20,6 +20,8 @@ export interface RepoSettingItem {
     repo_value: unknown;
     effective_value: unknown;
     is_overridden: boolean;
+    min: number | null;
+    max: number | null;
 }
 
 export class ConfigService {
@@ -130,6 +132,9 @@ export class ConfigService {
                 const repoRow = this.repoSettingsRepo.get(repoId, meta.key);
                 const isOverridden = repoRow !== null;
                 const repoValue = isOverridden ? JSON.parse(repoRow.value) : null;
+                const numeric = meta.type === 'number'
+                    ? (meta.validation as { minValue?: number | null; maxValue?: number | null })
+                    : undefined;
                 return {
                     key: meta.key,
                     label: meta.label,
@@ -141,6 +146,8 @@ export class ConfigService {
                     repo_value: repoValue,
                     effective_value: isOverridden ? repoValue : globalValue,
                     is_overridden: isOverridden,
+                    min: numeric && typeof numeric.minValue === 'number' ? numeric.minValue : null,
+                    max: numeric && typeof numeric.maxValue === 'number' ? numeric.maxValue : null,
                 };
             });
     }

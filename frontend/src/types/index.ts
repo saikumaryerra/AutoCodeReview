@@ -271,6 +271,8 @@ export interface RepoSettingItem {
   repo_value: unknown;
   effective_value: unknown;
   is_overridden: boolean;
+  min: number | null;
+  max: number | null;
 }
 
 export interface ApiResponse<T> {
