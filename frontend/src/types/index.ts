@@ -260,6 +260,19 @@ export interface CleanupResult {
   db_size_after_bytes: number;
 }
 
+export interface RepoSettingItem {
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+  type: 'number' | 'boolean' | 'string' | 'enum';
+  enumValues?: string[];
+  global_value: unknown;
+  repo_value: unknown;
+  effective_value: unknown;
+  is_overridden: boolean;
+}
+
 export interface ApiResponse<T> {
   data: T;
 }
