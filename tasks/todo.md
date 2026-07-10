@@ -1029,4 +1029,20 @@ git commit -m "fix(reviewer): drain the review loop before closing the database"
 
 ## Review
 
-_(To be filled in after execution, per `CLAUDE.md` § Task Management.)_
+Executed via subagent-driven development (fresh implementer + reviewer per task, TDD, one commit each). All six tasks landed; final whole-branch review verdict: **ready to merge**, no Critical or Important findings. Full suite 79/79, backend + frontend `tsc` clean, `npm run build` clean.
+
+**What shipped:**
+- Task 1 — `ConfigService.getAll()` no longer returns any `sensitive` value (not even masked); returns `is_set: boolean` instead.
+- Task 2 — both provider tokens set `editable: false`; startup purges any stale token row from the settings table.
+- Task 2b (added mid-branch) — closed two **live cleartext-PAT leaks** the Task 1 review surfaced and I reproduced: `DELETE /api/repos/:id/settings/:key` lacked the `isRepoOverridable` guard, and `POST /api/settings/:key/reset` returned + logged raw values. Added `isSensitive()`, guarded `reset()` (throws `NotFoundError`/`ValidationError`), redacted PATCH responses/logs.
+- Task 3 — frontend renders `is_set` for secrets; sensitive input never seeds from server state; falsy values (`false`/`0`) render correctly.
+- Task 4 — `claude.reviewTimeoutSeconds` now applies at runtime (boot via `configService.get`, live via `onChange`), mirroring `claude.model`.
+- Task 5 — review loop is stoppable with an interruptible idle sleep; `shutdown()` drains the in-flight review before `db.close()` and exits without closing on timeout (SQLite crash-safe + reconciliation). In-flight-drain regression test added and red-proven.
+
+**Scope change:** Task 2b was not in the original plan. The Task 1 review found the two cleartext-PAT endpoints; I reproduced both, the user approved expanding scope, and the plan was amended before continuing.
+
+**Spec deviations** (logged in `spec_change_log.md`, `spec/` untouched): sensitive values omitted rather than masked (+`is_set`); `reset()` returns values while spec declares `void` — flagged as an open design decision. The `editable: false` change actually restored the code to what the spec already mandated (drift correction).
+
+**Deferred minors** (none block merge): `reset()`'s `sensitive` branch is dead-but-defensive; `is_set` is `true` for `azureDevOps.orgUrl` (empty-string default, harmless — the frontend only consumes `is_set` for sensitive keys); the sensitive+editable input branch is unreachable today; no dedicated test for a falsy `is_set` value or the reset-400 HTTP path.
+
+**Out of scope / still open:** `set()`/`setForRepo()` still throw bare `Error` (vs `reset()`'s typed errors) — latent style inconsistency, no behavioral impact. The cleanup cron's comment/schedule/log mismatch, `requires_restart` never rendering in the UI, `CLAUDE_STANDARDS_TIMEOUT_SECONDS` being undocumented, and `retentionDays`' `??`-vs-`||` coercion were all identified but not touched.
