@@ -3,6 +3,7 @@ import { CONFIG_REGISTRY } from './config.schema.js';
 import type { SettingsRepository } from '../database/settings.repository.js';
 import type { RepoSettingsRepository } from '../database/repo-settings.repository.js';
 import { createModuleLogger } from '../shared/logger.js';
+import { ValidationError } from '../shared/errors.js';
 
 const logger = createModuleLogger('config-service');
 
@@ -102,7 +103,7 @@ export class ConfigService {
         }
         const result = meta.validation.safeParse(value);
         if (!result.success) {
-            throw new Error(`Invalid value for ${key}: ${result.error.message}`);
+            throw new ValidationError(`Invalid value for ${key}: ${result.error.message}`);
         }
         this.repoSettingsRepo.upsert(repoId, key, JSON.stringify(value), updatedBy);
         this.cache.delete(this.scopeKey(key, repoId));

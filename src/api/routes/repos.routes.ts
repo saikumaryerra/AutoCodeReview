@@ -382,10 +382,7 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
         '/:id/settings',
         asyncHandler(async (req, res) => {
             const { id } = req.params;
-            if (!repoExists(id)) {
-                res.status(404).json({ error: { message: `Repository ${id} not found` } });
-                return;
-            }
+            if (!repoExists(id)) throw new NotFoundError('Repository', id);
             res.json({ data: configService.getAllForRepo(id) });
         })
     );
@@ -397,20 +394,9 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
         asyncHandler(async (req, res) => {
             const { id, key } = req.params;
             const { value } = req.body as { value: unknown };
-            if (!repoExists(id)) {
-                res.status(404).json({ error: { message: `Repository ${id} not found` } });
-                return;
-            }
-            if (!configService.isRepoOverridable(key)) {
-                res.status(404).json({ error: { message: `Setting ${key} is not overridable per-repo` } });
-                return;
-            }
-            try {
-                configService.setForRepo(id, key, value, 'ui');
-            } catch (err) {
-                res.status(400).json({ error: { message: (err as Error).message } });
-                return;
-            }
+            if (!repoExists(id)) throw new NotFoundError('Repository', id);
+            if (!configService.isRepoOverridable(key)) throw new NotFoundError('Setting', key);
+            configService.setForRepo(id, key, value, 'ui');
             logger.info('Repo setting overridden', { repoId: id, key });
             res.json({ data: { key, repo_value: value, effective_value: value, is_overridden: true } });
         })
@@ -421,10 +407,7 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
         '/:id/settings/:key',
         asyncHandler(async (req, res) => {
             const { id, key } = req.params;
-            if (!repoExists(id)) {
-                res.status(404).json({ error: { message: `Repository ${id} not found` } });
-                return;
-            }
+            if (!repoExists(id)) throw new NotFoundError('Repository', id);
             configService.resetForRepo(id, key);
             logger.info('Repo setting reset to global', { repoId: id, key });
             res.json({ data: { key, is_overridden: false, effective_value: configService.get(key) } });
@@ -436,10 +419,7 @@ export function createReposRouter(deps: ReposRouterDeps): Router {
         '/:id/settings',
         asyncHandler(async (req, res) => {
             const { id } = req.params;
-            if (!repoExists(id)) {
-                res.status(404).json({ error: { message: `Repository ${id} not found` } });
-                return;
-            }
+            if (!repoExists(id)) throw new NotFoundError('Repository', id);
             configService.resetAllForRepo(id);
             logger.info('All repo settings reset to global', { repoId: id });
             res.json({ data: { reset: true } });
