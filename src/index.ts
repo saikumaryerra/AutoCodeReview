@@ -7,6 +7,7 @@ import { initializeDatabase } from './database/connection.js';
 import { ReviewsRepository } from './database/reviews.repository.js';
 import { ReposRepository } from './database/repos.repository.js';
 import { SettingsRepository } from './database/settings.repository.js';
+import { RepoSettingsRepository } from './database/repo-settings.repository.js';
 import { CleanupRepository } from './database/cleanup.repository.js';
 import { ProviderFactory } from './poller/provider.factory.js';
 import { ReviewQueue } from './poller/queue.js';
@@ -73,10 +74,11 @@ async function main() {
     const reviewsRepo = new ReviewsRepository(db);
     const reposRepo = new ReposRepository(db);
     const settingsRepo = new SettingsRepository(db);
+    const repoSettingsRepo = new RepoSettingsRepository(db);
     const cleanupRepo = new CleanupRepository(db);
 
-    // 5. Create config service (two-tier: DB overrides > env defaults)
-    const configService = new ConfigService(settingsRepo, config);
+    // 5. Create config service (three-tier: repo override > DB global > env default)
+    const configService = new ConfigService(settingsRepo, config, repoSettingsRepo);
 
     // 6. Seed repositories from .env config
     const providerFactory = new ProviderFactory(config);
