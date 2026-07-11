@@ -27,7 +27,7 @@ export interface ClaudeCliResult {
 export class ClaudeCliExecutor {
     constructor(
         private readonly cliPath: string,
-        private readonly timeoutSeconds: number,
+        private timeoutSeconds: number,
         private model: string | undefined,
     ) {}
 
@@ -38,6 +38,15 @@ export class ClaudeCliExecutor {
      */
     setModel(model: string | undefined): void {
         this.model = model;
+    }
+
+    /**
+     * Updates the per-review timeout. Called when the
+     * `claude.reviewTimeoutSeconds` setting changes at runtime. Applies to
+     * the next review; a review already in flight keeps its old timeout.
+     */
+    setTimeoutSeconds(seconds: number): void {
+        this.timeoutSeconds = seconds;
     }
 
     /**

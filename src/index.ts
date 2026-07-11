@@ -80,6 +80,20 @@ async function main() {
     // 5. Create config service (three-tier: repo override > DB global > env default)
     const configService = new ConfigService(settingsRepo, config, repoSettingsRepo);
 
+    // 5b. Purge token rows written by the pre-fix Settings UI. These were
+    // never read by ProviderFactory, so deleting them changes no behavior —
+    // but a real PAT (or a persisted mask) may be sitting in the DB in
+    // plaintext. Tokens now come only from env / the repos table.
+    for (const key of ['github.token', 'azureDevOps.token'] as const) {
+        if (settingsRepo.get(key) !== null) {
+            settingsRepo.delete(key);
+            logger.warn(
+                `Removed stale '${key}' row from the settings table. This value was ` +
+                `never used. Configure the token via the environment instead.`
+            );
+        }
+    }
+
     // 6. Seed repositories from .env config
     const providerFactory = new ProviderFactory(config);
     const configuredRepos = providerFactory.getAllConfiguredRepos();
@@ -133,9 +147,10 @@ async function main() {
     // survives restarts, then react to runtime changes via configService.
     const repoManager = new RepoManager(config.storage.reposDir);
     const initialModel = resolveModel(configService.get<string>('claude.model'));
+    const initialTimeout = configService.get<number>('claude.reviewTimeoutSeconds');
     const claudeExecutor = new ClaudeCliExecutor(
         config.claude.cliPath,
-        config.claude.reviewTimeoutSeconds,
+        initialTimeout,
         initialModel
     );
     const standardsGenerator = new CodingStandardsGenerator(
@@ -151,6 +166,12 @@ async function main() {
         logger.info('Claude model changed', { model: model ?? 'default (CLI chooses)' });
     });
 
+    configService.onChange('claude.reviewTimeoutSeconds', (value: unknown) => {
+        const seconds = value as number;
+        claudeExecutor.setTimeoutSeconds(seconds);
+        logger.info('Claude review timeout changed', { timeoutSeconds: seconds });
+    });
+
     // 10. Start the reviewer service (continuous processing loop)
     const reviewerService = new ReviewerService(
         db,
@@ -163,7 +184,9 @@ async function main() {
         reposRepo,
         standardsGenerator,
     );
-    reviewerService.startProcessing(); // runs in background (not awaited)
+    const processingLoop = reviewerService.startProcessing().catch(err => {
+        logger.error('Review processing loop crashed', { error: err });
+    });
     logger.info('Reviewer service started');
 
     // 11. Start the poller service
@@ -278,17 +301,45 @@ async function main() {
     logger.info(`System running. Tracking ${totalRepos} repo(s), polling every ${config.polling.intervalSeconds}s.`);
     logger.info(`API server at http://localhost:${config.server.apiPort}`);
 
-    // Graceful shutdown
-    const shutdown = () => {
+    // Graceful shutdown. Stop feeding the queue, let the in-flight review
+    // finish, then close the DB. If the drain times out we exit WITHOUT
+    // closing: SQLite is crash-safe, and closing a handle out from under an
+    // in-flight write is exactly the failure we are avoiding. Startup
+    // reconciliation re-enqueues anything left in `in_progress`.
+    const DRAIN_TIMEOUT_MS = 10_000;
+    let shuttingDown = false;
+
+    const shutdown = async () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+
         logger.info('Shutting down...');
         retryScheduler.stop();
         pollerService.stop();
-        db.close();
+        reviewerService.stop();
+
+        const drained = await Promise.race([
+            processingLoop.then(() => true),
+            new Promise<boolean>(resolve => {
+                setTimeout(() => resolve(false), DRAIN_TIMEOUT_MS).unref();
+            }),
+        ]);
+
+        if (drained) {
+            db.close();
+            logger.info('Shutdown complete');
+        } else {
+            logger.warn(
+                `Review still in flight after ${DRAIN_TIMEOUT_MS}ms; exiting without ` +
+                `closing the database. It will be reconciled on next startup.`
+            );
+        }
+
         process.exit(0);
     };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', () => { void shutdown(); });
+    process.on('SIGINT', () => { void shutdown(); });
 }
 
 main().catch(err => {

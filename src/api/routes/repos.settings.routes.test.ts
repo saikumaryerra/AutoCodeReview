@@ -10,7 +10,10 @@ import { createReposRouter } from './repos.routes.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import type { AppConfig } from '../../config/config.js';
 
-const ENV_CONFIG = { review: { maxFilesChanged: 50 } } as unknown as AppConfig;
+const ENV_CONFIG = {
+    review: { maxFilesChanged: 50 },
+    github: { token: 'ghp_TESTSECRET' },
+} as unknown as AppConfig;
 
 function makeApp() {
     const db = new Database(':memory:');
@@ -92,5 +95,22 @@ describe('repos settings routes', () => {
             .put('/api/v1/repos/repo-a/settings/review.maxFilesChanged')
             .send({ value: 99999 });
         expect(res.status).toBe(400);
+    });
+
+    it('DELETE refuses a non-overridable key rather than returning its value', async () => {
+        const res = await request(app).delete('/api/v1/repos/repo-a/settings/github.token');
+        expect(res.status).toBe(404);
+        expect(JSON.stringify(res.body)).not.toContain('ghp_');
+    });
+
+    it('DELETE still clears a real override', async () => {
+        await request(app)
+            .put('/api/v1/repos/repo-a/settings/review.maxFilesChanged')
+            .send({ value: 200 });
+        const res = await request(app)
+            .delete('/api/v1/repos/repo-a/settings/review.maxFilesChanged');
+        expect(res.status).toBe(200);
+        expect(res.body.data.is_overridden).toBe(false);
+        expect(res.body.data.effective_value).toBe(50);
     });
 });
