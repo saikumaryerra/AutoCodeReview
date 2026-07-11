@@ -15,7 +15,14 @@ export async function gitClone(url: string, targetDir: string): Promise<void> {
     }
 }
 
-export async function gitFetch(repoDir: string): Promise<void> {
+export async function gitFetch(repoDir: string, url: string): Promise<void> {
+    // Refresh the remote URL on every fetch so a rotated credential (e.g. an
+    // updated PAT) takes effect on already-cloned repos, not just new clones.
+    await execCommand('git', ['remote', 'set-url', 'origin', url], {
+        cwd: repoDir,
+        timeoutMs: 10_000,
+    });
+
     // Ensure the remote is configured to fetch all branches, not just
     // the default one (shallow single-branch clones set a narrow refspec).
     await execCommand('git', ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], {
