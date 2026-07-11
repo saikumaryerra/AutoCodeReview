@@ -44,7 +44,7 @@ export class RepoManager {
             logger.info('Repository already cloned, fetching updates', { repoFullName });
         }
 
-        await gitFetch(repoPath);
+        await gitFetch(repoPath, cloneUrl);
 
         // Checkout the exact commit SHA (detached HEAD).
         // We don't need the branch itself — just the right code at that commit.
