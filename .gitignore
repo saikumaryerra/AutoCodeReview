@@ -30,5 +30,7 @@ coverage/
 *.tsbuildinfo
 
 # Claude
-.claude/
+# Track shared project config (settings.json, agent rules, skills), but keep
+# the per-user local overrides out of version control.
+.claude/settings.local.json
 .superpowers/
