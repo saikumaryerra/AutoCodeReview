@@ -109,3 +109,9 @@ docker compose -f docker-compose.dev.yml up
 The full specification lives in `spec/` (files 01 through 17). When implementing a feature, check the relevant spec file first — it contains exact interfaces, schemas, API contracts, and component behaviors.
 
 **Do NOT modify any files in `spec/`.** The spec documents are the source of truth and must remain unchanged. If implementation reveals needed spec changes (corrections, clarifications, or additions), log them in `spec_change_log.md` at the project root instead of editing the spec files directly.
+
+## Code Review Rules (enforced)
+
+These rules are non-negotiable for any code review, refactor, or new code. They are imported below and loaded automatically:
+
+@.claude/agent/rules/decisions.md
