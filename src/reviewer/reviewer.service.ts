@@ -47,16 +47,13 @@ interface CurrentReview {
     started_at: string;
 }
 
-// ── Helper ────────────────────────────────────────────────────────
-
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // ── Service class ─────────────────────────────────────────────────
 
 export class ReviewerService {
     private currentReview: CurrentReview | null = null;
+    private stopping = false;
+    /** Resolves the current idle sleep early so stop() takes effect at once. */
+    private wake: (() => void) | null = null;
 
     constructor(
         private readonly db: Database.Database,
@@ -78,13 +75,14 @@ export class ReviewerService {
     }
 
     /**
-     * Infinite processing loop. Dequeues one job at a time.
-     * Sleeps for 5 seconds when the queue is empty.
+     * Processing loop. Dequeues one job at a time and sleeps for 5 seconds
+     * when the queue is empty. Runs until stop() is called; resolves once
+     * any in-flight review has finished, so shutdown can drain cleanly.
      */
     async startProcessing(): Promise<void> {
         logger.info('Review processing loop started');
 
-        while (true) {
+        while (!this.stopping) {
             const job = this.queue.dequeue();
             if (job) {
                 try {
@@ -102,9 +100,35 @@ export class ReviewerService {
                     });
                 }
             } else {
-                await sleep(5000);
+                await this.idleSleep(5000);
             }
         }
+
+        logger.info('Review processing loop stopped');
+    }
+
+    /**
+     * Signals the processing loop to exit after the current review (if any).
+     * Safe to call more than once, and before startProcessing().
+     */
+    stop(): void {
+        this.stopping = true;
+        this.wake?.();
+    }
+
+    /** A sleep that stop() can cut short. */
+    private idleSleep(ms: number): Promise<void> {
+        return new Promise(resolve => {
+            const timer = setTimeout(() => {
+                this.wake = null;
+                resolve();
+            }, ms);
+            this.wake = () => {
+                clearTimeout(timer);
+                this.wake = null;
+                resolve();
+            };
+        });
     }
 
     /**
