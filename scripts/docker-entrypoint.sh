@@ -40,10 +40,24 @@ if [ -f "${CLAUDE_AUTH_MOUNT}/.credentials.json" ]; then
         if [ -n "${EXISTING_GROUP}" ] && [ "${EXISTING_GROUP}" != "prreview" ]; then
             groupdel "${EXISTING_GROUP}" 2>/dev/null || true
         fi
-        groupmod -g "${HOST_GID}" prreview
-        usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview
-        # Reset ownership of files created under the old uid
-        chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+        # Align gid then uid. groupmod must run first so a group with HOST_GID
+        # exists for usermod -g to target. Track each step: if groupmod succeeds
+        # but usermod fails we've left a partial state (gid shifted, uid unchanged),
+        # so only chown on full success and say so plainly in the warning otherwise.
+        gid_ok=0
+        uid_ok=0
+        groupmod -g "${HOST_GID}" prreview 2>/dev/null && gid_ok=1
+        if [ "${gid_ok}" = "1" ]; then
+            usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview 2>/dev/null && uid_ok=1
+        fi
+        if [ "${gid_ok}" = "1" ] && [ "${uid_ok}" = "1" ]; then
+            # Reset ownership of files created under the old uid
+            chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+        elif [ "${gid_ok}" = "1" ]; then
+            echo "[entrypoint] WARNING: prreview gid was set to ${HOST_GID} but uid could not be set to ${HOST_UID}; account is partially aligned and Claude credentials may be unreadable"
+        else
+            echo "[entrypoint] WARNING: could not align prreview uid/gid to ${HOST_UID}:${HOST_GID}; Claude credentials may be unreadable"
+        fi
     fi
 fi
 
@@ -138,7 +152,7 @@ fi
 echo "============================================"
 echo "  AutoCodeReview"
 echo "  Node $(node --version) | ${NODE_ENV:-development}"
-echo "  API port: ${API_PORT:-3001}"
+echo "  API port: ${API_PORT:-9998}"
 echo "============================================"
 
 # --------------------------------------------------------------------------

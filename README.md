@@ -47,7 +47,7 @@ npm run dev            # backend
 cd frontend && npm run dev   # frontend (separate terminal)
 ```
 
-The backend serves the API on `API_PORT` (default `3001`); the Vite dev server runs on `FRONTEND_PORT` (default `5173`).
+The backend serves the API on `API_PORT` (default `3001`); the Vite dev server runs on `FRONTEND_PORT` (default `5173`). The production Docker image listens on `9998`.
 
 ## Configuration
 
@@ -64,7 +64,7 @@ Configure at least one provider (GitHub or Azure DevOps) in `.env`. See [.env.ex
 | `CLAUDE_CLI_PATH` | Path to the `claude` binary | `claude` |
 | `CLAUDE_REVIEW_TIMEOUT_SECONDS` | Max time per review | `300` |
 | `CLAUDE_MODEL` | Specific model to pass to the CLI (blank = default) | — |
-| `API_PORT` / `FRONTEND_PORT` | Server ports | `3001` / `5173` |
+| `API_PORT` / `FRONTEND_PORT` | Server ports (`API_PORT` defaults to `3001` locally, `9998` in the prod Docker image) | `3001` / `5173` |
 | `DB_PATH` / `REPOS_DIR` | SQLite file and local clone directory | `./data/reviews.db` / `./data/repos` |
 | `PR_STATE_FILTER` | Which PR states to review (`open`/`closed`/`all`) | `open` |
 | `SKIP_DRAFTS` | Skip draft PRs | `true` |
@@ -94,6 +94,8 @@ npm run build      # production build
 docker compose up                              # production
 docker compose -f docker-compose.dev.yml up    # development
 ```
+
+The production container serves the API and the SPA same-origin on `9998`.
 
 ## Project Structure
 

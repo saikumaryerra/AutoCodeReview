@@ -30,6 +30,17 @@ COPY frontend/ ./frontend/
 RUN cd frontend && npm run build
 
 # ---------------------------------------------------------------------------
+# Stage 1b: Production dependencies only
+# Separate from the builder so the runtime image never ships devDependencies
+# (typescript, tsx, vitest, etc.). Same base/arch as runtime so the
+# better-sqlite3 native binary stays compatible.
+# ---------------------------------------------------------------------------
+FROM node:20-slim AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# ---------------------------------------------------------------------------
 # Stage 2: Runtime
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS runtime
@@ -57,7 +68,7 @@ WORKDIR /app
 # Copy compiled backend, frontend build, production node_modules, and manifest
 COPY --from=builder --chown=prreview:prreview /app/dist/ ./dist/
 COPY --from=builder --chown=prreview:prreview /app/frontend/dist/ ./frontend/dist/
-COPY --from=builder --chown=prreview:prreview /app/node_modules/ ./node_modules/
+COPY --from=prod-deps --chown=prreview:prreview /app/node_modules/ ./node_modules/
 COPY --from=builder --chown=prreview:prreview /app/package.json ./
 
 # Copy and prepare the entrypoint script
