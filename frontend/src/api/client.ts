@@ -22,7 +22,9 @@ import type {
 } from '../types';
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  // Prefix with Vite's base so requests go to <base>api/v1 (e.g.
+  // /autocodereview/api/v1); the reverse proxy strips the base back to /api/v1.
+  baseURL: `${import.meta.env.BASE_URL}api/v1`,
 });
 
 export const reviewsApi = {
