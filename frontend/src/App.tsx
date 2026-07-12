@@ -12,7 +12,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/search" element={<Search />} />
-        <Route path="/pr/:repo/:prNumber" element={<PRDetail />} />
+        <Route path="/pr/:prNumber" element={<PRDetail />} />
         <Route path="/review/:id" element={<ReviewDetail />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

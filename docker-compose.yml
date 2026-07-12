@@ -12,6 +12,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Public base path for the frontend. Defaults to '/' (root/standalone).
+        # Set APP_BASE in the environment (e.g. /autocodereview/) only when
+        # serving behind a reverse proxy that strips that prefix before
+        # forwarding to the container.
+        APP_BASE: "${APP_BASE:-/}"
     container_name: auto-code-review
     restart: unless-stopped
 

@@ -51,8 +51,13 @@ if [ -f "${CLAUDE_AUTH_MOUNT}/.credentials.json" ]; then
             usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview 2>/dev/null && uid_ok=1
         fi
         if [ "${gid_ok}" = "1" ] && [ "${uid_ok}" = "1" ]; then
-            # Reset ownership of files created under the old uid
-            chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+            # Re-own only the runtime-writable home dir here. The large,
+            # read-only image tree under /app (node_modules, dist, frontend/dist)
+            # is world-readable as built and does NOT need per-boot chowning —
+            # traversing it recursively on every recreate is what stalled startup
+            # for minutes under host I/O pressure (chown blocked in ext4 journal
+            # commit). The writable data tree is chowned after it is created (§3).
+            chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" 2>/dev/null || true
         elif [ "${gid_ok}" = "1" ]; then
             echo "[entrypoint] WARNING: prreview gid was set to ${HOST_GID} but uid could not be set to ${HOST_UID}; account is partially aligned and Claude credentials may be unreadable"
         else
@@ -117,6 +122,13 @@ REPOS_SUBDIR="${REPOS_DIR:-${DATA_DIR}/repos}"
 LOGS_SUBDIR="${DATA_DIR}/logs"
 
 mkdir -p "${DATA_DIR}" "${REPOS_SUBDIR}" "${LOGS_SUBDIR}"
+
+# Own the writable data tree as the (possibly just-realigned) runtime user.
+# mkdir above runs as root, so freshly created dirs would otherwise be
+# unwritable by prreview. Scoped to data/ only — small and bounded — so startup
+# stays fast even under host I/O pressure, unlike a full /app chown.
+chown -R prreview:prreview "${DATA_DIR}" 2>/dev/null || true
+
 echo "[entrypoint] Data directories verified:"
 echo "             DB path:   ${DB_PATH:-${DATA_DIR}/reviews.db}"
 echo "             Repos dir: ${REPOS_SUBDIR}"

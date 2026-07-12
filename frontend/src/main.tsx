@@ -15,10 +15,14 @@ const queryClient = new QueryClient({
   },
 });
 
+// Vite's base ('/autocodereview/' in prod, '/' in dev). Strip the trailing
+// slash for React Router's basename (it wants '/autocodereview', not '.../').
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={basename}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>
