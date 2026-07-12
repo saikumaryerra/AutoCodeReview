@@ -3,7 +3,8 @@
 # ============================================================================
 # Runs the compiled application behind a single container.
 # Data (SQLite DB + cloned repos) persists in a named volume.
-# Claude CLI auth is mounted read-only from the host user's home directory.
+# Claude CLI auth is mounted read-write from the host user's home directory so
+# the container can refresh OAuth tokens; refreshes are visible to the host.
 # ============================================================================
 name: auto-code-review-prod
 services:
@@ -35,7 +36,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      # First boot compiles native modules and initializes the DB, which can
+      # exceed 15s; a longer grace period avoids false "unhealthy" flaps.
+      start_period: 40s
 
     deploy:
       resources:
