@@ -40,10 +40,13 @@ if [ -f "${CLAUDE_AUTH_MOUNT}/.credentials.json" ]; then
         if [ -n "${EXISTING_GROUP}" ] && [ "${EXISTING_GROUP}" != "prreview" ]; then
             groupdel "${EXISTING_GROUP}" 2>/dev/null || true
         fi
-        groupmod -g "${HOST_GID}" prreview
-        usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview
-        # Reset ownership of files created under the old uid
-        chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+        if groupmod -g "${HOST_GID}" prreview 2>/dev/null && \
+           usermod -u "${HOST_UID}" -g "${HOST_GID}" prreview 2>/dev/null; then
+            # Reset ownership of files created under the old uid
+            chown -R "${HOST_UID}:${HOST_GID}" "${TARGET_HOME}" /app 2>/dev/null || true
+        else
+            echo "[entrypoint] WARNING: could not align prreview uid/gid to ${HOST_UID}:${HOST_GID}; Claude credentials may be unreadable"
+        fi
     fi
 fi
 
@@ -138,7 +141,7 @@ fi
 echo "============================================"
 echo "  AutoCodeReview"
 echo "  Node $(node --version) | ${NODE_ENV:-development}"
-echo "  API port: ${API_PORT:-3001}"
+echo "  API port: ${API_PORT:-9998}"
 echo "============================================"
 
 # --------------------------------------------------------------------------
