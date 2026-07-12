@@ -5,7 +5,25 @@ discovered during implementation are recorded here instead.
 
 ---
 
-## 2026-07-10 — Sensitive config values are omitted, not masked
+## 2026-07-12 — PR-reviews endpoint takes `repo` as a query param, not a `%2F` path segment
+
+**Spec:** `spec/09-api-specification.md:80-84` defines
+`GET /api/v1/reviews/pr/:repoFullName/:prNumber` where `repoFullName` is a
+"URL-encoded repo name, e.g. `myorg%2Fbackend-api`".
+
+**Problem:** encoding the repo's slash as `%2F` inside a path segment is not
+portable across reverse proxies. nginx (with a URI in `proxy_pass`), Apache, and
+most cloud load balancers decode `%2F` → `/` before forwarding, which turns the
+single `repoFullName` segment into two segments and breaks route matching. The
+request then falls through to the SPA catch-all and returns `index.html`, so the
+UI shows "Failed to load PR details." The same failure hits the frontend deep
+link `/pr/owner%2Frepo/:n` on refresh.
+
+**Implemented:** the endpoint is now `GET /api/v1/reviews/pr?repo=<owner/repo>&pr=<number>`.
+`repo` travels in the query string (never path-normalized by proxies) and `pr` is
+a clean integer path-free value; both are validated with Zod (`validateQuery`).
+The frontend route became `/pr/:prNumber` with `?repo=` (see
+`frontend/src/utils/routes.ts#prDetailPath`). Response shape is unchanged.
 
 **Spec:** `spec/08-runtime-config.md:31` — `sensitive: boolean; // If true, value is masked in API responses (for tokens)`
 and `spec/08-runtime-config.md:137` — `sensitive: true, // Value is masked in API responses`

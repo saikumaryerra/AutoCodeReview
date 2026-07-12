@@ -1,3 +1,63 @@
+# Task: Make PR-detail URLs portable across reverse proxies
+
+## Problem
+
+`repo_full_name` (`owner/repo`) is passed as a **single URL-encoded path segment**
+(`owner%2Frepo`) in both the frontend route and the reviews-by-PR API. Reverse
+proxies (nginx with a URI in `proxy_pass`, Apache, cloud LBs) decode `%2F` → `/`,
+which adds a path segment and breaks route matching:
+- API `GET /reviews/pr/owner%2Frepo/7` → upstream sees `/reviews/pr/owner/repo/7`
+  → Express route `/pr/:repoFullName/:prNumber` no longer matches → SPA fallback
+  returns HTML → **"Failed to load PR details."**
+- Frontend deep-link `/pr/owner%2Frepo/7` breaks on refresh the same way.
+
+## Fix (proxy-agnostic)
+
+Pass `repo` as a **query parameter** (never path-normalized by any proxy) and keep
+`prNumber` as a clean integer path segment. No slash ever rides in a path segment.
+
+## Steps
+
+- [x] Backend: `GET /pr/:repoFullName/:prNumber` → `GET /pr` with
+      `validateQuery({ repo, pr })` Zod schema; drop manual decode/parse.
+      (`src/api/routes/reviews.routes.ts`)
+- [x] Frontend API client: `getByPR` → `api.get('/reviews/pr', { params: { repo, pr } })`.
+      (`frontend/src/api/client.ts`)
+- [x] Frontend route: `/pr/:repo/:prNumber` → `/pr/:prNumber`; repo via `?repo=`.
+      (`frontend/src/App.tsx`)
+- [x] `PRDetail`: read `prNumber` from params, `repo` from `useSearchParams`;
+      remove the double `decodeURIComponent`. (`frontend/src/pages/PRDetail.tsx`)
+- [x] Shared helper `prDetailPath(repo, prNumber)` in `frontend/src/utils/routes.ts`;
+      use in `PRCard` and `ReviewDetail` (removes duplicated URL construction).
+- [x] Tests: backend route test (`reviews.pr.routes.test.ts`, 5 cases:
+      slash-bearing repo, empty PR, and 3 validation rejections).
+- [x] Log spec deviation in `spec_change_log.md`.
+- [x] Verify: `tsc --noEmit` both clean; full suite 84/84 green.
+
+## Review
+
+**Design:** repo now travels as a query parameter (`?repo=owner/repo`), never as a
+path segment. Query strings are not path-normalized by any reverse proxy, so no
+`%2F` decoding can split the value — the app is portable behind nginx (any
+`proxy_pass` form), Apache, and cloud LBs. `prNumber` stays a clean integer path
+segment.
+
+**Files changed (7):** `src/api/routes/reviews.routes.ts` (route + Zod schema),
+`frontend/src/api/client.ts`, `frontend/src/App.tsx`,
+`frontend/src/pages/PRDetail.tsx`, `frontend/src/components/PRCard.tsx`,
+`frontend/src/pages/ReviewDetail.tsx`, new `frontend/src/utils/routes.ts`. Plus
+`reviews.pr.routes.test.ts` and `spec_change_log.md`.
+
+**Blast radius:** grep confirmed the only slash-bearing path segments were the PR
+route/link/API (3 build sites, 1 route, 1 consumer). Other `encodeURIComponent`
+uses (settings `key`, commit `sha`, review `id`) carry no slashes and are
+untouched. Response shape unchanged, so no consumer of the response breaks.
+
+**Still required to go live:** rebuild the image (`docker compose up -d --build`)
+— frontend changes are compiled into the bundle at build time.
+
+---
+
 # Deployment Strategy Fixes — Detailed Subagent-Driven Implementation Plan
 
 Scope: fix deployment discrepancies **#2, #3, #4, #5, #7, #8**.

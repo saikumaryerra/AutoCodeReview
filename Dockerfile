@@ -26,8 +26,11 @@ COPY src/ ./src/
 RUN npm run build
 
 # Build frontend SPA to frontend/dist/
+# APP_BASE sets the public base path when served behind the reverse proxy
+# (e.g. /autocodereview/). Defaults to '/' for root/standalone deployments.
+ARG APP_BASE=/
 COPY frontend/ ./frontend/
-RUN cd frontend && npm run build
+RUN cd frontend && APP_BASE="${APP_BASE}" npm run build
 
 # ---------------------------------------------------------------------------
 # Stage 1b: Production dependencies only
