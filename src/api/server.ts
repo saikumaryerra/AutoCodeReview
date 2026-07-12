@@ -64,7 +64,23 @@ export function startApiServer(deps: ApiServerDeps): Promise<Server> {
 
     // ── Global middleware ─────────────────────────────────────────
 
-    app.use(cors());
+    // CORS: the SPA is served same-origin in production, so cross-origin access
+    // is off by default there. The standard dev flow also stays same-origin — the
+    // Vite dev server proxies /api to this server (changeOrigin), so the browser
+    // never issues a cross-origin request. The dev fallback below therefore only
+    // matters when the SPA is served without the Vite proxy (e.g. hitting the API
+    // directly from :5173). Override anywhere with CORS_ORIGINS (comma-separated).
+    const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
+    if (corsOrigins.length > 0) {
+        app.use(cors({ origin: corsOrigins }));
+    } else if (process.env.NODE_ENV !== 'production') {
+        const frontendPort = configService.get<number>('server.frontendPort');
+        app.use(cors({ origin: `http://localhost:${frontendPort}` }));
+    }
+    // Production with no CORS_ORIGINS -> no CORS middleware (same-origin only).
     app.use(express.json());
 
     // Request logging
