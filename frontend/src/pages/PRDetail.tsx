@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, GitBranch, User } from 'lucide-react';
 import { usePRReviews } from '../hooks/useReviews';
 import { PRTimeline } from '../components/PRTimeline';
@@ -7,11 +7,12 @@ import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
 
 export function PRDetail() {
-  const { repo, prNumber } = useParams<{ repo: string; prNumber: string }>();
-  const decodedRepo = decodeURIComponent(repo ?? '');
+  const { prNumber } = useParams<{ prNumber: string }>();
+  const [searchParams] = useSearchParams();
+  const repo = searchParams.get('repo') ?? '';
   const prNum = Number(prNumber);
 
-  const { data, isLoading, error, refetch } = usePRReviews(decodedRepo, prNum);
+  const { data, isLoading, error, refetch } = usePRReviews(repo, prNum);
 
   if (isLoading) {
     return <LoadingSpinner message="Loading PR reviews..." />;

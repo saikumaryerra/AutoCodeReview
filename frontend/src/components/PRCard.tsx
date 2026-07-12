@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { SeverityBadge } from './SeverityBadge';
 import { StatusBadge } from './StatusBadge';
 import { PrStateBadge } from './PrStateBadge';
+import { prDetailPath } from '../utils/routes';
 import type { PRListItem } from '../types';
 
 interface PRCardProps {
@@ -11,7 +12,7 @@ interface PRCardProps {
 }
 
 export function PRCard({ pr }: PRCardProps) {
-  const href = `/pr/${encodeURIComponent(pr.repo_full_name)}/${pr.pr_number}`;
+  const href = prDetailPath(pr.repo_full_name, pr.pr_number);
 
   return (
     <Link

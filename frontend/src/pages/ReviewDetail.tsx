@@ -12,6 +12,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
 import { downloadReviewReport } from '../utils/reviewReport';
+import { prDetailPath } from '../utils/routes';
 
 export function ReviewDetail() {
   const { id } = useParams<{ id: string }>();
@@ -115,7 +116,7 @@ export function ReviewDetail() {
             <p className="text-sm text-gray-500">{review.repo_full_name}</p>
             <h2 className="mt-1 text-xl font-bold text-gray-900">
               <Link
-                to={`/pr/${encodeURIComponent(review.repo_full_name)}/${review.pr_number}`}
+                to={prDetailPath(review.repo_full_name, review.pr_number)}
                 className="hover:text-indigo-600"
               >
                 #{review.pr_number}: {review.pr_title}

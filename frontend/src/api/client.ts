@@ -33,9 +33,9 @@ export const reviewsApi = {
   getById: (id: string) =>
     api.get<ApiResponse<ReviewDetail>>(`/reviews/${id}`),
   getByPR: (repo: string, prNumber: number) =>
-    api.get<ApiResponse<PRDetailData>>(
-      `/reviews/pr/${encodeURIComponent(repo)}/${prNumber}`
-    ),
+    api.get<ApiResponse<PRDetailData>>('/reviews/pr', {
+      params: { repo, pr: prNumber },
+    }),
   getByCommit: (sha: string) =>
     api.get<ApiResponse<ReviewDetail>>(`/reviews/commit/${sha}`),
   trigger: (body: TriggerReviewBody) =>
