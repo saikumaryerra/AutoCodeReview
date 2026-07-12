@@ -27,6 +27,11 @@ const ListReviewsQuerySchema = z.object({
     order: z.enum(['asc', 'desc']).default('desc'),
 });
 
+const PRReviewsQuerySchema = z.object({
+    repo: z.string().min(1),
+    pr: z.coerce.number().int().positive(),
+});
+
 const TriggerReviewBodySchema = z.object({
     repo_full_name: z.string().min(1).regex(/^[^/]+\/[^/]+$/, 'Must be in owner/repo format'),
     pr_number: z.number().int().positive(),
@@ -83,16 +88,16 @@ export function createReviewsRouter(deps: ReviewsRouterDeps): Router {
     // NOTE: Specific path routes (/pr/..., /commit/..., /trigger) are registered
     // BEFORE the parameterized /:id route to avoid /:id matching "pr", "commit", etc.
 
-    // GET /pr/:repoFullName/:prNumber — Get all reviews for a PR
+    // GET /pr?repo=<owner/repo>&pr=<number> — Get all reviews for a PR.
+    // `repo` is a query parameter (not a path segment) so its slash never gets
+    // decoded/normalized by reverse proxies — the app stays portable behind any
+    // proxy. See spec_change_log.md (2026-07-12).
     router.get(
-        '/pr/:repoFullName/:prNumber',
+        '/pr',
+        validateQuery(PRReviewsQuerySchema),
         asyncHandler(async (req, res) => {
-            const repoFullName = decodeURIComponent(req.params.repoFullName);
-            const prNumber = parseInt(req.params.prNumber, 10);
-
-            if (isNaN(prNumber) || prNumber < 1) {
-                throw new ValidationError('prNumber must be a positive integer');
-            }
+            const { repo: repoFullName, pr: prNumber } =
+                req.query as unknown as z.infer<typeof PRReviewsQuerySchema>;
 
             logger.debug('Getting reviews for PR', { repoFullName, prNumber });
 
