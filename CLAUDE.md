@@ -57,10 +57,11 @@ npm run typecheck              # tsc --noEmit
 
 # Docker (production — image listens on 9998)
 docker compose up
-
-# Docker (development)
-docker compose -f docker-compose.dev.yml up
 ```
+
+> Docker is the production path only — there is no development container.
+> Develop on the host with the commands above (needs Node >= 20 and the Claude
+> CLI in PATH).
 
 > The Vitest config excludes `data/**` — those are gitignored runtime clones of
 > the repos under review, and they carry their own test files that must never be
