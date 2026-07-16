@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Project Overview
 
 AutoCodeReview is an AI-powered pull request review system. It polls GitHub and Azure DevOps repositories for open PRs, uses Claude CLI to perform structured code reviews on local checkouts, stores results in SQLite, and serves them through a React frontend.
@@ -33,38 +35,60 @@ data/             # Runtime: SQLite DB + local git clones (not committed)
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (backend and frontend are SEPARATE — install both)
 npm install
+cd frontend && npm install && cd ..
 
-# Run in development (hot-reload)
-npm run dev
+# Run in development (hot-reload; separate terminals)
+npm run dev                    # backend API on API_PORT (default 3001)
+cd frontend && npm run dev     # Vite dev server on FRONTEND_PORT (default 5173)
 
 # Build
-npm run build
+npm run build                  # backend (tsc → dist/)
+cd frontend && npm run build   # frontend (tsc -b && vite build)
 
-# Run tests
-npx vitest
-
-# Run single test file
-npx vitest src/path/to/test.ts
+# Run tests (Vitest)
+npm test                       # single run (vitest run)
+npm run test:watch             # watch mode
+npx vitest src/path/to/foo.test.ts   # single test file
 
 # Type check
-npx tsc --noEmit
+npm run typecheck              # tsc --noEmit
 
-# Docker (production)
+# Docker (production — image listens on 9998)
 docker compose up
 
 # Docker (development)
 docker compose -f docker-compose.dev.yml up
 ```
 
+> The Vitest config excludes `data/**` — those are gitignored runtime clones of
+> the repos under review, and they carry their own test files that must never be
+> collected by this project's run.
+
 ## Key Architecture Decisions
 
 - **Claude CLI over API:** The system spawns `claude` CLI on local repo checkouts so it can read full project structure, follow imports, and use built-in tools (grep, glob) for deeper reviews.
 - **Provider-agnostic design:** All git hosting logic is behind the `GitProvider` interface (`src/poller/provider.interface.ts`). The reviewer, database, API, and frontend are provider-agnostic.
 - **Review identity:** Each review is uniquely identified by `(repository, pr_number, commit_sha)`.
-- **Two-tier config:** Environment variables set defaults; the settings table allows UI-driven overrides without restart.
-- **Sequential reviews:** Reviews are processed one at a time from an in-memory queue to avoid system overload.
+- **Three-tier config:** `ConfigService` resolves each setting as repo override > DB global setting > env default. Env vars seed defaults; the `settings` table allows UI-driven global overrides without restart; `repo_settings` allows per-repo overrides. Live changes are pushed to consumers via `configService.onChange(...)` (e.g. the Claude model/timeout are updated on the running executors without a restart).
+- **Sequential reviews:** Reviews are processed one at a time from an in-memory queue (`ReviewQueue`) to avoid overloading the host.
+
+## Runtime Bootstrap (`src/index.ts`)
+
+`main()` wires the whole system together in order, and this is the fastest way to understand how the pieces connect:
+
+1. Load + validate config, verify the `claude` CLI is on PATH (reviews warn-and-fail without it), initialize the SQLite DB.
+2. Construct repositories (one class per table) and the `ConfigService`.
+3. Seed the `repos` table from `.env`, auto-detecting each repo's default branch via its provider.
+4. **Startup reconciliation** (`reconcileOrphanedReviews`) re-enqueues any review left `in_progress` by a previous crash/shutdown.
+5. Start the long-running services, all sharing the single `ReviewQueue`:
+   - `ReviewerService.startProcessing()` — the continuous consumer loop (clone/update repo → run Claude CLI → parse → store).
+   - `PollerService` — cron-based producer that finds new/updated PRs and enqueues them.
+   - `RetryScheduler` — re-enqueues failed reviews whose backoff (`retry-policy.ts`) is due.
+   - A daily cleanup cron: (1) delete reviews past `review.retentionDays`, (2) remove clones of untracked repos, (3) `git gc` active clones.
+6. Start the Express API (`startApiServer`), which is handed every service/repo it needs by dependency injection.
+7. **Graceful shutdown** on SIGTERM/SIGINT: stop producers, let the in-flight review drain (10s timeout), then close the DB — or exit without closing if the drain times out (SQLite is crash-safe; reconciliation recovers on next start).
 
 ## Coding Conventions
 
@@ -114,4 +138,4 @@ The full specification lives in `spec/` (files 01 through 17). When implementing
 
 These rules are non-negotiable for any code review, refactor, or new code. They are imported below and loaded automatically:
 
-@.claude/agent/rules/decisions.md
+@.claude/rules/decisions.md

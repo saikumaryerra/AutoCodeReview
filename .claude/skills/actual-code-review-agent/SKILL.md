@@ -34,7 +34,7 @@ There is **zero tolerance** for deviations.
 1. **Read and strictly follow** the decisions defined in
 
    ```
-   .agent/rules/decisions.md
+   .claude/rules/decisions.md
    ```
 
 2. **Nothing written in this file is compromisable**.
@@ -138,7 +138,7 @@ You must validate **each point individually** and treat them as a **TODO checkli
 - ❌ Generic or unclear file names are **not allowed**
 - ✅ Structure must strictly follow:
   - Feature-based separation
-  - Rules defined in `decision.md` inside /.agent/rules/decision.md
+  - Rules defined in `decisions.md` inside .claude/rules/decisions.md
 
 ---
 
