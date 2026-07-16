@@ -138,4 +138,4 @@ The full specification lives in `spec/` (files 01 through 17). When implementing
 
 These rules are non-negotiable for any code review, refactor, or new code. They are imported below and loaded automatically:
 
-@.claude/agent/rules/decisions.md
+@.claude/rules/decisions.md
