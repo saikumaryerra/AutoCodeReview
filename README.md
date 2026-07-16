@@ -91,11 +91,11 @@ npm run build      # production build
 ## Docker
 
 ```bash
-docker compose up                              # production
-docker compose -f docker-compose.dev.yml up    # development
+docker compose up    # production
 ```
 
 The production container serves the API and the SPA same-origin on `9998`.
+Docker is the production path only — develop on the host (see Getting Started).
 
 ## Project Structure
 
