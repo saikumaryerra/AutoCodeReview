@@ -5,6 +5,34 @@ discovered during implementation are recorded here instead.
 
 ---
 
+## 2026-07-13 — Development container removed (`Dockerfile.dev`, `docker-compose.dev.yml`)
+
+**Spec:** `spec/14-deployment.md` §14.5 ("Docker Compose — Development") and §14.6
+("Development Dockerfile") define both files; `spec/04-directory-structure.md:10,12`
+lists them in the project tree.
+
+**Removed, and why.** Docker is the production path only; development runs on the
+host (`npm run dev` for the API, `cd frontend && npm run dev` for the SPA). The two
+dev files were scaffolded at init and touched exactly once since, while
+`docker-compose.yml` evolved across five commits — the dev path was not exercised
+and drifted silently. Concretely, `docker-compose.dev.yml` loaded the whole `.env`
+via `env_file:`, so the build-time `APP_BASE=/autocodereview/` leaked into the Vite
+**dev server**, which then served at `/autocodereview/` while its dev proxy still
+only matched `/api` — every dev API call would have returned the SPA shell instead
+of JSON. Nobody noticed, which is the point: unexercised deployment config rots and
+misleads.
+
+**Consequence:** there is no containerized development environment. Host dev now
+requires Node >= 20 and the Claude CLI in PATH (previously the dev image supplied
+both). `scripts/setup.sh` (spec/04:108) is retained — it sets up host development,
+which is now the only dev path. `README.md` and `CLAUDE.md` were updated to drop the
+`docker compose -f docker-compose.dev.yml up` instruction.
+
+**If the dev container is ever wanted back,** re-add it from spec §14.5/§14.6 and
+pin `APP_BASE: "/"` in its `environment:` block so the prod subpath cannot leak in.
+
+---
+
 ## 2026-07-12 — PR-reviews endpoint takes `repo` as a query param, not a `%2F` path segment
 
 **Spec:** `spec/09-api-specification.md:80-84` defines

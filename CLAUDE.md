@@ -53,10 +53,11 @@ npx tsc --noEmit
 
 # Docker (production)
 docker compose up
-
-# Docker (development)
-docker compose -f docker-compose.dev.yml up
 ```
+
+Development runs on the host (`npm run dev` for the API, `cd frontend && npm run dev`
+for the SPA); it requires Node >= 20 and the Claude CLI in PATH. There is no
+development container — Docker is the production path only.
 
 ## Key Architecture Decisions
 

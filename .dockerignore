@@ -34,7 +34,6 @@ logs/
 
 # Docker files (no recursive builds)
 Dockerfile
-Dockerfile.dev
 docker-compose*.yml
 
 # Documentation and specs (not needed at runtime)
