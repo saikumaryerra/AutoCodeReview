@@ -1,5 +1,7 @@
 # AutoCodeReview
 
+[![CI](https://github.com/saikumaryerra/AutoCodeReview/actions/workflows/ci.yml/badge.svg)](https://github.com/saikumaryerra/AutoCodeReview/actions/workflows/ci.yml)
+
 AI-powered pull request review system. It polls your GitHub and Azure DevOps repositories for open PRs, runs a structured code review using the **Claude CLI** on a local checkout of each PR, stores the results in SQLite, and serves them through a React dashboard. Reviews can optionally be posted back to the PR as a summary comment.
 
 ## How It Works
