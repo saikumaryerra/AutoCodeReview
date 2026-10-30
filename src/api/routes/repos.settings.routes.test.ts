@@ -38,6 +38,38 @@ function makeApp() {
     return app;
 }
 
+describe('POST /repos', () => {
+    it('trims whitespace from a pasted token before storing it', async () => {
+        const db = new Database(':memory:');
+        db.exec(getSchemaSQL());
+        const configService = new ConfigService(
+            new SettingsRepository(db), ENV_CONFIG, new RepoSettingsRepository(db),
+        );
+        const app = express();
+        app.use(express.json());
+        app.use('/api/v1/repos', createReposRouter({
+            db,
+            providerFactory: {} as any,
+            repoManager: {} as any,
+            standardsGenerator: {} as any,
+            configService,
+        }));
+        app.use(errorHandler);
+
+        const res = await request(app).post('/api/v1/repos').send({
+            full_name: 'Proj/Repo',
+            provider: 'azure_devops',
+            org_url: 'https://dev.azure.com/acme',
+            token: '  secret-pat  ',
+        });
+
+        expect(res.status).toBe(201);
+        const row = db.prepare('SELECT token FROM repositories WHERE id = ?')
+            .get(res.body.data.id) as { token: string };
+        expect(row.token).toBe('secret-pat');
+    });
+});
+
 describe('repos settings routes', () => {
     let app: express.Express;
     beforeEach(() => { app = makeApp(); });

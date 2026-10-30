@@ -7,6 +7,7 @@ import { SeverityBadge } from './SeverityBadge';
 import { StatusBadge } from './StatusBadge';
 import { PrStateBadge } from './PrStateBadge';
 import { reviewsApi } from '../api/client';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { ReviewListItem } from '../types';
 
 interface ReviewCardProps {
@@ -40,11 +41,7 @@ export function ReviewCard({ review }: ReviewCardProps) {
       // Auto-clear feedback after a few seconds
       setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ??
-        (err as Error).message ??
-        'Failed to queue re-review';
-      setFeedback({ ok: false, message: msg });
+      setFeedback({ ok: false, message: getApiErrorMessage(err as Error, 'Failed to queue re-review') });
       setTimeout(() => setFeedback(null), 5000);
     } finally {
       setReReviewing(false);

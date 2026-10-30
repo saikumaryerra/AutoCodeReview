@@ -28,3 +28,12 @@
   at start belonged to a previous merged project; its "Task 1-9 complete" lines could have been
   mistaken for this plan's. Archive a stale ledger and stale task briefs/reports before starting,
   or a reviewer may read a prior project's report by mistake.
+
+## 2026-10-29 — Regenerate 500
+
+- **A Vitest hook that returns a function registers it as teardown.** `beforeEach(() => mock.mockReset())`
+  returns the mock, which Vitest then *calls* after each test — with a rejecting mock this fails the
+  test with the mock's own error. Use a block body in hooks.
+- **Check stored secrets for whitespace before blaming expiry.** A "401 since today" looked like an
+  expired PAT; it was a freshly pasted token with trailing spaces. Inspect length/char classes (never
+  print the value) and retry trimmed before telling the user to rotate.

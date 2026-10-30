@@ -29,7 +29,9 @@ const AddRepoBodySchema = z.object({
     provider: z.enum(['github', 'azure_devops']).optional(),
     default_branch: z.string().min(1).default('main'),
     org_url: z.string().url().optional(),
-    token: z.string().min(1).optional(),
+    // Trim: a PAT pasted with trailing whitespace is stored verbatim and
+    // breaks the Basic auth header (provider responds 401).
+    token: z.string().trim().min(1).optional(),
 });
 
 const UpdateRepoBodySchema = z.object({

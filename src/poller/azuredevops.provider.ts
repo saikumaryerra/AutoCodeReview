@@ -13,8 +13,11 @@ import type {
     ProviderFile,
 } from '../shared/types.js';
 import { createModuleLogger } from '../shared/logger.js';
+import { ProviderAuthError, PROVIDER_AUTH_FAILURE_STATUSES } from '../shared/errors.js';
 
 const log = createModuleLogger('azuredevops-provider');
+
+const AZURE_DEVOPS_LABEL = 'Azure DevOps';
 
 /**
  * Azure DevOps implementation of the GitProvider interface.
@@ -43,7 +46,16 @@ export class AzureDevOpsProvider implements GitProvider {
     async initialize(): Promise<void> {
         const authHandler = azdev.getPersonalAccessTokenHandler(this.token);
         const connection = new azdev.WebApi(this.orgUrl, authHandler);
-        this.gitApi = await connection.getGitApi();
+        try {
+            this.gitApi = await connection.getGitApi();
+        } catch (err) {
+            // typed-rest-client attaches the HTTP status to the thrown Error.
+            const status = (err as { statusCode?: number }).statusCode;
+            if (status !== undefined && PROVIDER_AUTH_FAILURE_STATUSES.includes(status)) {
+                throw new ProviderAuthError(AZURE_DEVOPS_LABEL, this.orgUrl);
+            }
+            throw err;
+        }
         log.info('Azure DevOps provider initialized', { orgUrl: this.orgUrl });
     }
 

@@ -13,6 +13,7 @@ import { ErrorAlert } from '../components/ErrorAlert';
 import { EmptyState } from '../components/EmptyState';
 import { downloadReviewReport } from '../utils/reviewReport';
 import { prDetailPath } from '../utils/routes';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export function ReviewDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,10 +38,7 @@ export function ReviewDetail() {
       setPostResult({ ok: true, message: 'Re-review queued' });
       await refetch();
     } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
-        ?? (err as Error).message
-        ?? 'Failed to queue re-review';
-      setPostResult({ ok: false, message: msg });
+      setPostResult({ ok: false, message: getApiErrorMessage(err as Error, 'Failed to queue re-review') });
     } finally {
       setReReviewing(false);
     }
@@ -54,10 +52,7 @@ export function ReviewDetail() {
       const res = await reviewsApi.postComment(review.id);
       setPostResult({ ok: true, message: 'Comment posted to PR', url: res.data.data.comment_url });
     } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
-        ?? (err as Error).message
-        ?? 'Failed to post comment';
-      setPostResult({ ok: false, message: msg });
+      setPostResult({ ok: false, message: getApiErrorMessage(err as Error, 'Failed to post comment') });
     } finally {
       setPosting(false);
     }

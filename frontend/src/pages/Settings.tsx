@@ -27,6 +27,7 @@ import { pollerApi, cleanupApi } from '../api/client';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { SettingItem, Provider, CleanupPreview, RepoSettingItem } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -333,8 +334,8 @@ function CodingStandardsPanel({ repoId, onClose }: { repoId: string; onClose: ()
       await regenerateStandards.mutateAsync(repoId);
       setEditing(false);
       setToast({ type: 'success', message: 'Coding standards regenerated from codebase.' });
-    } catch {
-      setToast({ type: 'error', message: 'Failed to regenerate standards. Check that the repo is cloned.' });
+    } catch (err) {
+      setToast({ type: 'error', message: getApiErrorMessage(err as Error, 'Failed to regenerate standards.') });
     }
     setTimeout(() => setToast(null), 5000);
   };

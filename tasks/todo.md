@@ -322,3 +322,22 @@ all derive from the same `${API_PORT}`). Documented in `.env.example`.
 **Out of scope (unchanged):** #1 (API auth/TLS), #6 (native-build tooling).
 
 **Not committed** — left in the working tree for review.
+
+---
+
+# 2026-10-29 — Regenerate 500 on newly added Azure repo
+
+**Root cause (prod logs + DB):** repo `7c9b2020…` (ClopayCortex) was saved with a PAT
+carrying 2 trailing spaces → Azure DevOps 401 → unmapped error → generic 500. Trimmed
+token returns 200. Secondary: `full_name` saved URL-encoded (`Conversational%20AI%20Platform`)
+→ Azure returns "not found" for the project; decoded name resolves (default branch `main`).
+
+- [x] `ProviderAuthError` (502, `PROVIDER_AUTH_FAILED`) in `src/shared/errors.ts`
+- [x] `AzureDevOpsProvider.initialize()` maps 401/403 → `ProviderAuthError`
+- [x] `AddRepoBodySchema.token` trims whitespace
+- [x] Frontend: shared `getApiErrorMessage` util; regenerate toast shows server message
+      (replaced 3 duplicated inline casts in ReviewDetail/ReviewCard)
+- [x] Tests: provider 401/403/500 mapping, token trim on POST /repos
+
+**Verification:** backend `tsc --noEmit` clean, frontend `tsc -b` clean, `npm test` 88/88.
+**Not done:** existing prod row still needs its token/name fixed; container not rebuilt; not committed.
